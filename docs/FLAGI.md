@@ -140,6 +140,48 @@ python3 src/scanner.py --monitor --interval 60
 python3 src/scanner.py --monitor --email-alerts admin@hospital.com
 ```
 
+## 📡 Mikrokontroler (ESP32)
+
+Odbiornik danych z ESP32 podłączonego do Raspberry Pi przez USB (port szeregowy). ESP32 wysyła wyniki skanów BLE i WiFi jako linie JSON. **Skrypt:** `scripts/esp32_serial_reader.py`.
+
+**Wymagania:** ESP32 podłączone kablem USB do Pi (lub PC), na ESP32 wgrany program np. `ESP32_Unified_Scanner.ino`.
+
+| Flaga | Opis |
+|-------|------|
+| `--port PORT` | Port szeregowy, np. `/dev/ttyUSB0` lub `/dev/ttyACM0` (domyślnie: auto – szuka ttyUSB0, ttyACM0, serial0) |
+| `--baud BAUD` | Prędkość portu w bodach (domyślnie: 115200) |
+| `--out PLIK` | Zapisuj każdą linię do pliku (np. `wyniki_esp32.json`) – plik jest **nadpisywany** przy każdym uruchomieniu |
+| `--enrich` | Wzbogacanie: producent (OUI), typ urządzenia z UUID, podpowiedzi podatności (`ble_bez_parowania`, `możliwe_urządzenie_medyczne`) |
+| `--on-new-scan` | Przy zdarzeniu **new** (BLE) uruchom skaner: `python src/scanner.py --ble` (co najwyżej co 60 s) |
+| `--alert-email ADR` | Wyślij email przy **nowym urządzeniu** (SMTP z `.env`: SMTP_SERVER, SMTP_USER, SMTP_PASSWORD) |
+| `--alert-slack URL` | Wyślij POST do **Slack Incoming Webhook** przy nowym urządzeniu |
+| `--alert-splunk PLIK` | Dopisz linię do pliku przy nowym urządzeniu (Splunk monitoruje ten plik) |
+
+**Przykłady:**
+```bash
+# Tylko podgląd w terminalu
+python3 scripts/esp32_serial_reader.py
+
+# Zapis do pliku + wzbogacanie
+python3 scripts/esp32_serial_reader.py --out wyniki_esp32.json --enrich
+
+# Przy nowym BLE uruchom skaner (co najwyżej co 60 s)
+python3 scripts/esp32_serial_reader.py --out wyniki_esp32.json --enrich --on-new-scan
+
+# Alert email przy nowym urządzeniu (SMTP w .env)
+python3 scripts/esp32_serial_reader.py --out wyniki_esp32.json --enrich --alert-email admin@example.com
+
+# Alert do Slack
+python3 scripts/esp32_serial_reader.py --out wyniki_esp32.json --alert-slack https://hooks.slack.com/services/XXX
+
+# Dopisanie do pliku dla Splunk
+python3 scripts/esp32_serial_reader.py --out wyniki_esp32.json --alert-splunk /var/log/splunk_esp32.jsonl
+```
+
+**Uwaga:** Przed wgrywaniem nowego firmware na ESP32 (Arduino IDE lub esptool) zatrzymaj skrypt (Ctrl+C), żeby port nie był zajęty.
+
+---
+
 ## 📊 Przykłady Kombinacji
 
 ```bash
@@ -207,6 +249,7 @@ Skaner automatycznie generuje:
 3. **Bez WiFi:** `--no-wifi` - pomija skanowanie sieci (szybsze)
 4. **Z API:** `--api` - otwiera przeglądarkę z wynikami
 5. **Bez automatycznych funkcji:** `--no-siem --no-threat-intel` - jeśli nie potrzebujesz
+6. **Mikrokontroler ESP32:** `python3 scripts/esp32_serial_reader.py --out wyniki_esp32.json --enrich` – odbiór BLE/WiFi z ESP32 przez USB
 
 ## ❓ Pomoc
 

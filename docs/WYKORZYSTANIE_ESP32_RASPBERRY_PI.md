@@ -414,8 +414,8 @@ pip install pyserial
 **Współpraca:** Na ESP32 wgrywasz program, który np. skanuje BLE i wysyła wyniki do Serial (np. linie JSON). Na Pi uruchamiasz skrypt Pythona, który czyta z `/dev/ttyUSB0` (lub `ttyACM0`) i np. zapisuje do pliku, wysyła do API skanera albo wyświetla w konsoli. Pi w tym czasie może normalnie działać jako serwer skanera (WiFi/BLE z Pi, dodatkowe dane z ESP32 przez USB).
 
 **Gotowy przykład w projekcie:**
-- **ESP32:** wgraj `esp32_examples/ESP32_Agent_Serial.ino` – skanuje BLE i wysyła linie JSON przez Serial.
-- **Raspberry Pi:** `python scripts/esp32_serial_reader.py` (opcjonalnie `--port /dev/ttyUSB0`, `--out wyniki.json`). Wymaga: `pip install pyserial`.
+- **ESP32:** wgraj `esp32_examples/ESP32_Unified_Scanner` – skanuje BLE i WiFi, wysyła **tylko zmiany** (event: `new` / `gone`) + co ~60 s `heartbeat`. Dzięki temu sens ma działanie 24/7 – nie zalewasz logów tym samym.
+- **Raspberry Pi:** `python scripts/esp32_serial_reader.py --out wyniki_esp32.json --enrich`. Wymaga: `pip install pyserial`.
 
 #### Opcja B: UART przez GPIO (bez USB)
 
@@ -468,6 +468,54 @@ W obu przypadkach oba urządzenia współpracują: Pi = główny mózg (skaner, 
 
 ---
 
+## 🔄 Aktualizacja firmware ESP32 bez podłączania do PC
+
+Żeby wgrać nowy plik .ino, ESP32 **musi** być podłączone do czegoś przez USB (PC albo Raspberry Pi). Możesz jednak **nie podłączać go do komputera** – wystarczy, że na stałe stoi przy Raspberry Pi.
+
+### Opcja A: Wgrywanie z Raspberry Pi (ESP32 zawsze przy Pi)
+
+**Idea:** ESP32 jest podłączone do Pi przez USB. Edytujesz kod na PC, ale **wgrywasz z Pi** – nie przenosisz ESP32 do komputera.
+
+1. **Na Raspberry Pi** (przez SSH):
+   - Zainstaluj Arduino CLI lub esptool (do wgrywania plików .bin).
+   - Projekt trzymaj na Pi (np. `git pull` z Twojego repo po zmianach na PC).
+
+2. **Sposób 1 – kompilacja na PC, wgrywanie z Pi:**
+   - Na **PC:** w Arduino IDE otwierasz `.ino`, robisz **Sketch → Export compiled Binary**. Powstaje plik `.bin` w folderze szkicu.
+   - Kopiujesz ten plik na Pi (np. `scp`, pendrive, albo `git push` z PC → `git pull` na Pi, jeśli .bin trzymasz w repo lub jako artefakt).
+   - Na **Pi:** wgrywasz:  
+     `esptool.py --port /dev/ttyUSB0 write_flash 0x10000 ścieżka/do/pliku.bin`  
+     (adres `0x10000` jest typowy dla Arduino ESP32; jeśli używasz innego schematu partycji, sprawdź w Arduino IDE w logu przy Upload).
+
+3. **Sposób 2 – kompilacja i wgrywanie na Pi:**
+   - Na Pi instalujesz **Arduino CLI** (headless, bez GUI).  
+     Następnie: `arduino-cli core install esp32:esp32`, `arduino-cli compile ...`, `arduino-cli upload -p /dev/ttyUSB0 ...`.  
+   - Kod edytujesz na PC i synchronizujesz na Pi (git, rsync, itd.). Na Pi tylko kompilujesz i wgrywasz.
+
+**Efekt:** ESP32 nie musi być nigdy podłączone do PC – tylko do Pi. Aktualizujesz projekt na PC, a „flashowanie” robisz z Pi.
+
+### Opcja B: Aktualizacja OTA (przez WiFi)
+
+Po **pierwszym** wgraniu (przez USB) możesz zrobić tak, żeby kolejne aktualizacje szły **przez WiFi** – bez kabla.
+
+- Wymaga: schematu partycji **z OTA** (np. „Minimal SPIFFS (1.9MB APP with OTA)”).
+- W kodzie ESP32: obsługa OTA (np. `ArduinoOTA` w pętli) + ESP32 w sieci WiFi.
+- Na PC lub Pi: narzędzie do wysłania pliku `.bin` na ESP32 (np. skrypt Pythona z `requests` do endpointu OTA na ESP32).
+
+To daje wygodę „bez kabla”, ale wymaga więcej konfiguracji (OTA w szkicu, stały adres IP lub mDNS, skrypt do wysyłki). Jeśli ESP32 i tak stoi przy Pi i masz dostęp do USB, **Opcja A** zwykle wystarczy.
+
+### Podsumowanie
+
+| Sytuacja | Co zrobić |
+|----------|-----------|
+| Masz PC i Pi; ESP32 przy Pi | Edytuj na PC → kompiluj na PC → kopiuj .bin na Pi → wgrywaj z Pi (`esptool`). Albo: edytuj na PC, sync na Pi, kompiluj i wgrywaj Arduino CLI na Pi. |
+| Chcesz zero kabla po pierwszym flashu | Użyj OTA: pierwsze wgranie przez USB, potem aktualizacje przez WiFi. |
+| Jednorazowa zmiana .ino | Podłącz ESP32 do PC, Upload w Arduino IDE – najszybciej. |
+
+Dzięki temu możesz **aktualizować projekt (i firmware)** bez konieczności podłączania ESP32 do komputera – wystarczy Pi i USB między Pi a ESP32.
+
+---
+
 ## 📚 Przydatne Linki i Dokumentacja
 
 ### ESP32:
@@ -484,6 +532,35 @@ W obu przypadkach oba urządzenia współpracują: Pi = główny mózg (skaner, 
 - **Dokumentacja:** `/docs/` folder
 - **Przewodnik Python:** `/docs/PRZEWODNIK_PYTHON_CZESC_1.md`
 - **Jak uruchomić:** `/docs/JAK_URUCHOMIC.md`
+
+---
+
+## 📊 Wartość wyników ESP32 i co można dodać
+
+### Co ESP32 robi teraz (ESP32_Unified_Scanner)
+
+- **Tylko zmiany** – wysyła dane **gdy coś się zmieni**: `event: "new"` (nowe urządzenie BLE / nowa sieć WiFi) lub `event: "gone"` (urządzenie/sieć zniknęła). Dzięki temu sens ma działanie 24/7 – nie zalewasz logów tym samym, tylko dostajesz zdarzenia przy zmianach.
+- **Heartbeat** – co ~60 s wysyła `type: "heartbeat"` z liczbą urządzeń BLE i WiFi (żeby wiadomo, że skaner żyje).
+- **Pola:** `type`, `mac`, `name`, `rssi`, `service_uuid`, `manufacturer_data` (BLE), `ssid`, `channel` (WiFi). Po stronie Pi skrypt `--enrich` dodaje producenta (OUI), typ urządzenia, podpowiedzi podatności.
+
+**Czy z tego wynika, że urządzenia są podatne?** Sam ESP32 **nie** robi pełnego audytu (skan portów, CVE, szyfrowanie). Pokazuje tylko **kto jest w zasięgu** i **kiedy się pojawia/znika**. Wartość: ciągły monitoring „co się zmienia” + sygnał do dalszej analizy na Pi.
+
+### Gdzie sprawdzać podatności
+
+- **Pełny audyt (podatności, porty, CVE)** – na **Raspberry Pi** uruchom główny skaner:  
+  `python src/scanner.py --ble --wifi --audit`  
+  To on łączy się z urządzeniami, skanuje porty, ocenia szyfrowanie i zwraca „podatny / nie”.
+- **Rola ESP32:** wykrywa **nowe** urządzenia (event `new`); na Pi możesz wtedy ręcznie lub skryptem uruchomić pełny skan na tym MAC/SSID.
+
+### Co można dodać w przyszłości
+
+| Pomysł | Opis |
+|--------|------|
+| **Test BLE „bez parowania”** | Na ESP32: próba połączenia BLE z urządzeniem; jeśli uda się **bez parowania** – wysłanie `ble_no_auth: true`. Daje konkretną podpowiedź „może być podatne”. Wymaga kodu BLE client na ESP32 (connect + disconnect). |
+| **Pi uruchamia skan przy `new`** | Gdy `esp32_serial_reader.py` dostanie `event: "new"` (np. nowy MAC BLE), skrypt mógłby wywołać `scanner.py --ble` lub konkretny test na ten adres – wtedy ESP32 = „czujnik”, Pi = „audyt na żądanie”. |
+| **Alerty** | Zapis `new`/`gone` do pliku lub bazy; przy `new` wysłanie maila/Slacka lub wpis do Splunk – „nowe urządzenie w zasięgu”. |
+
+**Podsumowanie:** ESP32 ma sens jako **monitor zmian** (kto się pojawił/zniknął). Sam w sobie nie mówi „podatne / nie” – to robi główny skaner na Pi. Połączenie: ESP32 = ciągły monitoring, Pi = pełny audyt gdy trzeba.
 
 ---
 
