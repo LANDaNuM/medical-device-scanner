@@ -201,22 +201,69 @@ git branch -vv
 # Teraz `git push` będzie działać bez `-u`
 ```
 
-### Jeśli masz konflikt z remote:
+### ⚠️ Błąd: "Updates were rejected because the remote contains work that you do not have locally"
+
+**Problem:** Próbujesz zrobić `git push`, ale dostajesz błąd:
+```
+! [rejected]        main -> main (fetch first)
+error: failed to push some refs to 'https://github.com/...'
+hint: Updates were rejected because the remote contains work that you do
+hint: have locally.
+```
+
+**Przyczyna:** Na GitHubie są zmiany, których nie masz lokalnie (ktoś inny zrobił push, lub zrobiłeś push z innego komputera).
+
+**Rozwiązanie 1: Pull z rebase (ZALECANE - zachowuje czystą historię)**
 ```bash
-# Pobierz zmiany z GitHub
+# 1. Pobierz zmiany z GitHub (bez merge)
 git fetch origin
 
-# Zobacz różnice
-git diff main origin/main
+# 2. Zobacz różnice (opcjonalnie)
+git log --oneline origin/main..HEAD  # Twoje lokalne commity
+git log --oneline HEAD..origin/main  # Commity na remote
 
-# Zmerguj zmiany
+# 3. Zrób pull z rebase (zachowuje Twoje commity na górze)
+git pull origin main --rebase
+
+# 4. Jeśli są konflikty, rozwiąż je:
+# - Git pokaże które pliki mają konflikty
+# - Edytuj pliki, usuń znaczniki <<<<<<, ======, >>>>>>
+# - Potem: git add .
+# - Potem: git rebase --continue
+
+# 5. Push
+git push origin main
+```
+
+**Rozwiązanie 2: Pull z merge (prostsze, ale tworzy merge commit)**
+```bash
+# 1. Pobierz i zmerguj zmiany
 git pull origin main
 
-# Rozwiąż konflikty (jeśli są), potem:
-git add .
-git commit -m "Rozwiązano konflikty"
-git push
+# 2. Jeśli są konflikty, rozwiąż je:
+# - Git pokaże które pliki mają konflikty
+# - Edytuj pliki, usuń znaczniki <<<<<<, ======, >>>>>>
+# - Potem: git add .
+# - Potem: git commit -m "Rozwiązano konflikty"
+
+# 3. Push
+git push origin main
 ```
+
+**Rozwiązanie 3: Force push (TYLKO jeśli jesteś pewien że chcesz nadpisać remote!)**
+```bash
+# ⚠️ UWAGA: To nadpisze historię na GitHubie!
+# Użyj TYLKO jeśli jesteś pewien że chcesz usunąć zmiany z remote
+
+git push --force-with-lease origin main
+# LUB (bardziej agresywne):
+git push --force origin main
+```
+
+**Które rozwiązanie wybrać?**
+- ✅ **Rebase (Rozwiązanie 1)** - jeśli chcesz zachować czystą historię
+- ✅ **Merge (Rozwiązanie 2)** - jeśli chcesz prostsze rozwiązanie
+- ⚠️ **Force push (Rozwiązanie 3)** - TYLKO jeśli jesteś pewien że chcesz nadpisać remote
 
 ### Jeśli zapomniałeś dodać plik do commita:
 ```bash
@@ -279,12 +326,134 @@ git checkout -b nowy-branch
 
 ---
 
+## 💻 Praca z Wiele Urządzeń (Laptop, PC)
+
+### ✅ Teraz NIE BĘDZIE problemu!
+
+Po rozwiązaniu konfliktu (rebase), teraz możesz normalnie pracować z wielu urządzeń.
+
+### 🔄 Prawidłowy Workflow dla Wiele Urządzeń
+
+**Zawsze przed rozpoczęciem pracy (na KAŻDYM urządzeniu):**
+```bash
+# 1. Pobierz najnowsze zmiany z GitHub
+git pull origin main
+
+# 2. Sprawdź status
+git status
+```
+
+**Podczas pracy:**
+```bash
+# 1. Sprawdź co się zmieniło
+git status
+
+# 2. Dodaj zmiany
+git add .
+
+# 3. Commit
+git commit -m "Opis zmian"
+
+# 4. PRZED push - zawsze pobierz najnowsze zmiany!
+git pull origin main --rebase
+
+# 5. Push
+git push origin main
+```
+
+### 📋 Przykładowy Scenariusz
+
+**Laptop:**
+```bash
+# 1. Pobierz zmiany (jeśli były zmiany z PC)
+git pull origin main
+
+# 2. Pracuj, zmieniaj pliki...
+
+# 3. Commit
+git add .
+git commit -m "Zmiany z laptopa"
+
+# 4. Pull przed push (na wypadek zmian z PC)
+git pull origin main --rebase
+
+# 5. Push
+git push origin main
+```
+
+**PC:**
+```bash
+# 1. Pobierz zmiany (z laptopa)
+git pull origin main
+
+# 2. Pracuj, zmieniaj pliki...
+
+# 3. Commit
+git add .
+git commit -m "Zmiany z PC"
+
+# 4. Pull przed push (na wypadek zmian z laptopa)
+git pull origin main --rebase
+
+# 5. Push
+git push origin main
+```
+
+### ⚠️ WAŻNE: Zawsze Pull Przed Push!
+
+**Dlaczego?**
+- Ktoś inny (lub Ty z innego urządzenia) mógł zrobić push
+- Pull przed push zapobiega konfliktom
+- Rebase zachowuje czystą historię
+
+**Zła praktyka (może powodować konflikty):**
+```bash
+git add .
+git commit -m "Zmiany"
+git push  # ❌ Może się nie udać jeśli są zmiany na remote!
+```
+
+**Dobra praktyka (zawsze działa):**
+```bash
+git add .
+git commit -m "Zmiany"
+git pull origin main --rebase  # ✅ Pobierz najnowsze zmiany
+git push origin main  # ✅ Teraz push na pewno zadziała
+```
+
+### 🔄 Szybki Workflow (Zalecany)
+
+**Na każdym urządzeniu przed pracą:**
+```bash
+# Pobierz najnowsze zmiany
+git pull origin main
+```
+
+**Po zakończeniu pracy:**
+```bash
+# Dodaj, commit, pull, push
+git add .
+git commit -m "Opis zmian"
+git pull origin main --rebase
+git push origin main
+```
+
+### 💡 Wskazówki
+
+1. **Zawsze pull przed push** - zapobiega konfliktom
+2. **Używaj rebase** - zachowuje czystą historię
+3. **Commit często** - małe commity są lepsze niż duże
+4. **Sprawdzaj status** - `git status` przed każdym pull/push
+
+---
+
 ## ✅ Szybki Checklist Przed Pushem
 
+- [ ] `git pull origin main --rebase` - pobierz najnowsze zmiany
 - [ ] `git status` - sprawdź co się zmieniło
 - [ ] `git add .` - dodaj zmiany
 - [ ] `git commit -m "..."` - commit z opisem
-- [ ] `git push` - wyślij na GitHub
+- [ ] `git push origin main` - wyślij na GitHub
 
 ---
 
