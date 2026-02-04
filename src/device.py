@@ -148,9 +148,16 @@ class Device:
         else:
             metadata_serializable = {}
         
+        # Pobierz IP z metadanych dla łatwiejszej identyfikacji
+        device_ip = None
+        if metadata_serializable:
+            device_ip = metadata_serializable.get('ip_address') or metadata_serializable.get('ip')
+        
         return {
             "mac_address": self.mac_address,
             "name": self.name,
+            "display_name": self.get_display_name(),  # Czytelna nazwa
+            "device_fingerprint": self.get_device_fingerprint(),  # Unikalny fingerprint
             "device_type": self.device_type.value,
             "protocol": self.protocol.value,
             "has_encryption": bool(self.has_encryption),
@@ -161,6 +168,7 @@ class Device:
             "manufacturer": self.manufacturer,
             "model": self.model,
             "firmware_version": self.firmware_version,
+            "ip_address": device_ip,  # Dodaj IP na głównym poziomie dla łatwego dostępu
             "first_seen": self.first_seen.isoformat(),
             "last_seen": self.last_seen.isoformat(),
             "vulnerabilities": self.vulnerabilities,
@@ -189,6 +197,105 @@ class Device:
         for key, value in d.items():
             result[key] = self._convert_value_for_json(value)
         return result
+    
+    def get_device_fingerprint(self) -> str:
+        """
+        Generuje unikalny fingerprint urządzenia składający się z wielu cech.
+        
+        Fingerprint jest używany do identyfikacji urządzenia nawet jeśli:
+        - MAC się zmieni (random MAC)
+        - IP się zmieni
+        - Nazwa się zmieni
+        
+        Składa się z:
+        - Protokół
+        - Typ urządzenia
+        - Producent
+        - Model
+        - Ostatnie 6 znaków MAC (dla identyfikacji)
+        - IP (jeśli dostępne)
+        
+        Returns:
+            Unikalny fingerprint urządzenia
+        """
+        parts = [
+            self.protocol.value,
+            self.device_type.value,
+        ]
+        
+        if self.manufacturer:
+            parts.append(self.manufacturer)
+        if self.model:
+            parts.append(self.model)
+        
+        # Dodaj ostatnie 6 znaków MAC (dla identyfikacji)
+        mac_short = self.mac_address.replace(":", "")[-6:].upper()
+        parts.append(f"MAC:{mac_short}")
+        
+        # Dodaj IP jeśli dostępne (dla WiFi)
+        if self.metadata:
+            ip = self.metadata.get('ip_address') or self.metadata.get('ip')
+            if ip:
+                parts.append(f"IP:{ip}")
+        
+        return "|".join(parts)
+    
+    def get_display_name(self) -> str:
+        """
+        Zwraca czytelną nazwę urządzenia do wyświetlenia.
+        
+        Priorytet:
+        1. Nazwa urządzenia (jeśli nie jest IP)
+        2. Producent + Model
+        3. Typ urządzenia + MAC/IP
+        4. Protokół + MAC/IP
+        
+        Returns:
+            Czytelna nazwa urządzenia
+        """
+        import re
+        
+        # Jeśli nazwa to IP, nie używaj jej jako głównej nazwy
+        is_ip = bool(re.match(r'^(\d{1,3}\.){3}\d{1,3}$', self.name))
+        
+        if not is_ip and self.name and self.name not in ["Unknown", "Unknown Device"]:
+            return self.name
+        
+        # Spróbuj producent + model
+        if self.manufacturer and self.model:
+            return f"{self.manufacturer} {self.model}"
+        elif self.manufacturer:
+            return f"{self.manufacturer} Device"
+        
+        # Spróbuj typ urządzenia
+        if self.device_type != DeviceType.UNKNOWN:
+            type_names = {
+                DeviceType.GLUCOSE_METER: "Glukometr",
+                DeviceType.INSULIN_PUMP: "Pompa insulinowa",
+                DeviceType.BLOOD_PRESSURE: "Ciśnieniomierz",
+                DeviceType.PULSE_OXIMETER: "Pulsoksymetr",
+                DeviceType.FITNESS_TRACKER: "Opaska fitness",
+                DeviceType.SMARTWATCH: "Smartwatch",
+            }
+            type_name = type_names.get(self.device_type, self.device_type.value)
+            
+            # Dodaj identyfikator
+            if self.metadata:
+                ip = self.metadata.get('ip_address') or self.metadata.get('ip')
+                if ip:
+                    return f"{type_name} ({ip})"
+            
+            mac_short = self.mac_address.replace(":", "")[-6:].upper()
+            return f"{type_name} (MAC: {mac_short})"
+        
+        # Ostatnia opcja: protokół + identyfikator
+        if self.metadata:
+            ip = self.metadata.get('ip_address') or self.metadata.get('ip')
+            if ip:
+                return f"Urządzenie {self.protocol.value} ({ip})"
+        
+        mac_short = self.mac_address.replace(":", "")[-6:].upper()
+        return f"Urządzenie {self.protocol.value} (MAC: {mac_short})"
     
     def __str__(self) -> str:
         """Reprezentacja tekstowa urządzenia"""

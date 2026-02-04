@@ -72,16 +72,76 @@ class USBScanner:
         self.scanned_devices: List[Device] = []
         # Typowe prędkości dla mikrokontrolerów (do automatycznego wykrywania)
         self.common_baudrates = [9600, 19200, 38400, 57600, 115200, 230400, 460800]
+        
+        # Vendor IDs i Product IDs znanych urządzeń wewnętrznych (klawiatury, touchpady, kamery wbudowane)
+        # Te urządzenia są częścią laptopa i nie powinny być pokazywane jako zewnętrzne urządzenia USB
+        self.internal_device_ids = {
+            # Klawiatury wewnętrzne (HID)
+            (0x046D, 0xC077): "Logitech Keyboard (internal)",
+            (0x046D, 0xC07D): "Logitech Keyboard (internal)",
+            # Touchpady
+            (0x06CB, None): "Synaptics Touchpad",  # Synaptics - wszystkie produkty
+            (0x04F3, None): "Elan Touchpad",  # Elan - wszystkie produkty
+            # Kamery wbudowane
+            (0x0C45, None): "Microdia Camera (internal)",  # Wiele kamer wbudowanych
+            (0x174F, None): "Syntek Camera (internal)",
+            (0x5986, None): "Acer Camera (internal)",
+            (0x0BDA, None): "Realtek Camera (internal)",  # Realtek - wiele kamer
+            # Kontrolery USB (hubs) - ZAWSZE wewnętrzne
+            (0x1D6B, 0x0001): "Linux USB Hub Controller",
+            (0x1D6B, 0x0002): "Linux USB Hub Controller",
+            (0x1D6B, 0x0003): "Linux USB Hub Controller",
+            # Kontrolery audio wewnętrzne
+            (0x8086, None): "Intel Audio Controller",  # Intel - wiele urządzeń audio
+            (0x10EC, None): "Realtek Audio Controller",  # Realtek - wiele urządzeń audio
+            # Kontrolery Bluetooth wewnętrzne
+            (0x0A5C, None): "Broadcom Bluetooth (internal)",  # Broadcom - wiele urządzeń BT
+            (0x8087, None): "Intel Bluetooth Controller",  # Intel - kontrolery BT
+            # Kontrolery WiFi wewnętrzne
+            (0x168C, None): "Qualcomm WiFi (internal)",  # Qualcomm/Atheros WiFi
+            (0x10EC, None): "Realtek WiFi (internal)",  # Realtek WiFi
+        }
+        
+        # USB Class codes dla urządzeń wewnętrznych (które zwykle są częścią laptopa)
+        self.internal_usb_classes = {
+            0x09: "USB Hub",  # Huby USB są ZAWSZE wewnętrzne
+            0x0E: "Video",  # Kamery wbudowane
+            0x01: "Audio",  # Kontrolery audio wewnętrzne
+        }
+        
+        # Vendor IDs które są ZAWSZE wewnętrzne (część laptopa)
+        self.always_internal_vendors = {
+            0x1D6B,  # Linux Foundation (kontrolery USB)
+            0x8086,  # Intel (kontrolery wewnętrzne)
+            0x8087,  # Intel (kontrolery USB)
+        }
     
     def scan_usb_devices(self) -> List[Device]:
         """
         Skanuje urządzenia USB podłączone do komputera.
         
+        WAŻNE - Jak działa skanowanie USB:
+        ====================================
+        Skanowanie jest wykonywane przez KONTROLERY USB w laptopie (część płyty głównej).
+        Kontrolery USB skanują WSZYSTKIE urządzenia USB w systemie, w tym:
+        - Urządzenia zewnętrzne (podłączone przez porty USB)
+        - Urządzenia wewnętrzne (część laptopa: kamery, Bluetooth, huby USB, czytniki kart)
+        
+        Dlatego skaner wykrywa urządzenia nawet gdy nic nie jest podłączone zewnętrznie -
+        wykrywa wewnętrzne komponenty laptopa, które są połączone przez USB wewnętrznie.
+        
+        Skaner automatycznie filtruje urządzenia wewnętrzne, aby pokazać tylko zewnętrzne.
+        
         Returns:
-            Lista wykrytych urządzeń Device
+            Lista wykrytych urządzeń Device (tylko zewnętrzne)
         """
         console.print("[cyan]🔍 Rozpoczynam skanowanie USB...[/cyan]")
-        console.print("[dim]Skanuję urządzenia USB podłączone do komputera...[/dim]\n")
+        console.print("[dim]Skanuję urządzenia USB podłączone do komputera...[/dim]")
+        console.print("[dim]💡 Fizyczne urządzenie: Kontrolery USB w laptopie (część płyty głównej)[/dim]")
+        console.print("[dim]💡 WAŻNE: Z powodu topologii laptopa wykrywam WSZYSTKIE urządzenia USB w systemie:[/dim]")
+        console.print("[dim]      • Urządzenia zewnętrzne (podłączone przez porty USB) ✅[/dim]")
+        console.print("[dim]      • Urządzenia wewnętrzne (kamery, Bluetooth, huby USB - część laptopa) ⚠️[/dim]")
+        console.print("[dim]💡 Automatycznie filtruję wewnętrzne, aby pokazać tylko zewnętrzne urządzenia[/dim]\n")
         
         devices: List[Device] = []
         
@@ -102,18 +162,97 @@ class USBScanner:
         console.print(f"\n[green]✅ Skanowanie USB zakończone. Znaleziono {len(devices)} urządzeń.[/green]\n")
         return devices
     
+    def _is_internal_device(self, usb_dev) -> bool:
+        """
+        Sprawdza czy urządzenie USB jest wewnętrzne (część laptopa).
+        
+        Args:
+            usb_dev: Obiekt urządzenia USB z pyusb
+        
+        Returns:
+            True jeśli urządzenie jest wewnętrzne i powinno być pominięte
+        """
+        try:
+            vendor_id = usb_dev.idVendor
+            product_id = usb_dev.idProduct
+            device_class = usb_dev.bDeviceClass
+            
+            # PRIORYTET 1: Sprawdź czy vendor jest ZAWSZE wewnętrzny
+            if vendor_id in self.always_internal_vendors:
+                return True
+            
+            # PRIORYTET 2: Sprawdź czy to hub USB (ZAWSZE wewnętrzny)
+            if device_class == 0x09:  # USB Hub
+                return True
+            
+            # PRIORYTET 3: Sprawdź czy to znane urządzenie wewnętrzne (po Vendor/Product ID)
+            for (vid, pid), description in self.internal_device_ids.items():
+                if vid == vendor_id:
+                    if pid is None or pid == product_id:
+                        return True
+            
+            # PRIORYTET 4: Sprawdź klasę USB (huby i kamery są zwykle wewnętrzne)
+            if device_class in self.internal_usb_classes:
+                return True
+            
+            # Sprawdź czy to urządzenie HID (klawiatura/mysz) - może być wewnętrzne
+            # Ale nie filtruj wszystkich HID, bo niektóre urządzenia medyczne też są HID
+            if device_class == 0x03:  # HID
+                # Sprawdź czy to może być urządzenie medyczne
+                try:
+                    manufacturer = usb.util.get_string(usb_dev, usb_dev.iManufacturer) or ""
+                    product = usb.util.get_string(usb_dev, usb_dev.iProduct) or ""
+                    
+                    # Jeśli ma słowa kluczowe medyczne, nie filtruj
+                    medical_keywords = ["glucose", "gluco", "diabetes", "insulin", "pump",
+                                       "pressure", "bp", "pulse", "oximeter", "heart",
+                                       "medical", "med", "patient", "vital"]
+                    text = (manufacturer + " " + product).lower()
+                    if any(keyword in text for keyword in medical_keywords):
+                        return False  # To może być urządzenie medyczne - nie filtruj
+                    
+                    # Filtruj tylko znane urządzenia wewnętrzne (touchpady, klawiatury wbudowane)
+                    # Nie filtruj wszystkich HID - mogą być zewnętrzne urządzenia medyczne
+                    internal_hid_keywords = ["touchpad", "trackpad", "synaptics", "elan"]
+                    if any(keyword in text for keyword in internal_hid_keywords):
+                        # To jest prawdopodobnie touchpad - filtruj
+                        return True
+                except:
+                    pass
+            
+            # Sprawdź ścieżkę urządzenia (na Linuxie)
+            if platform.system() == "Linux":
+                try:
+                    # Wewnętrzne urządzenia są często na określonych busach
+                    # Ale nie możemy tego łatwo sprawdzić przez pyusb bezpośrednio
+                    # Więc polegamy na Vendor/Product ID i klasach
+                    pass
+                except:
+                    pass
+            
+            return False  # Nie wiemy na pewno - pokaż urządzenie
+        
+        except Exception:
+            # Jeśli nie możemy sprawdzić, nie filtruj (bezpieczniejsze)
+            return False
+    
     def _scan_pyusb(self) -> List[Device]:
         """
         Skanuje urządzenia USB używając pyusb.
+        Filtruje urządzenia wewnętrzne (klawiatury, touchpady, kamery wbudowane).
         
         Returns:
-            Lista wykrytych urządzeń USB
+            Lista wykrytych urządzeń USB (tylko zewnętrzne)
         """
         devices: List[Device] = []
         
         try:
             # Znajdź wszystkie urządzenia USB
             usb_devices = usb.core.find(find_all=True)
+            
+            # Zlicz wszystkie urządzenia do wyświetlenia
+            all_devices_list = list(usb_devices)
+            filtered_count = 0
             
             with Progress(
                 SpinnerColumn(),
@@ -122,8 +261,13 @@ class USBScanner:
             ) as progress:
                 task = progress.add_task("Skanuję urządzenia USB...", total=None)
                 
-                for usb_dev in usb_devices:
+                for usb_dev in all_devices_list:
                     try:
+                        # Pomiń urządzenia wewnętrzne (część laptopa)
+                        if self._is_internal_device(usb_dev):
+                            filtered_count += 1
+                            continue
+                        
                         device = self._analyze_usb_device(usb_dev)
                         if device:
                             devices.append(device)
@@ -133,6 +277,16 @@ class USBScanner:
                         continue
                 
                 progress.update(task, description="✅ Skanowanie zakończone")
+            
+            # Wyświetl informację o przefiltrowanych urządzeniach
+            if filtered_count > 0:
+                console.print(f"[dim]   Pominięto {filtered_count} urządzeń wewnętrznych (klawiatury, touchpady, kamery wbudowane)[/dim]")
+                console.print(f"[dim]   💡 To są komponenty laptopa połączone wewnętrznie przez USB (nie zewnętrzne urządzenia)[/dim]")
+            
+            # Jeśli nie znaleziono żadnych urządzeń, wyjaśnij dlaczego
+            if len(devices) == 0 and filtered_count == 0:
+                console.print("[dim]   💡 Nie znaleziono zewnętrznych urządzeń USB - wszystko OK![/dim]")
+                console.print("[dim]   💡 Jeśli podłączysz urządzenie USB, pojawi się tutaj[/dim]")
         
         except Exception as e:
             console.print(f"[red]❌ Błąd skanowania USB: {e}[/red]")
@@ -141,13 +295,51 @@ class USBScanner:
         
         return devices
     
+    def _is_internal_serial_port(self, port) -> bool:
+        """
+        Sprawdza czy port szeregowy jest wewnętrzny (część laptopa).
+        
+        Args:
+            port: Port szeregowy z pyserial
+        
+        Returns:
+            True jeśli port jest wewnętrzny i powinien być pominięty
+        """
+        description = (port.description or "").lower()
+        manufacturer = (port.manufacturer or "").lower()
+        device_name = (port.device or "").lower()
+        
+        # Porty wewnętrzne (część laptopa)
+        internal_keywords = [
+            "bluetooth", "bluetooth serial", "modem", "internal",
+            "pci", "pcie", "onboard", "embedded"
+        ]
+        
+        # Sprawdź czy to port wewnętrzny
+        text = f"{description} {manufacturer} {device_name}".lower()
+        if any(keyword in text for keyword in internal_keywords):
+            # Ale nie filtruj jeśli to może być urządzenie medyczne
+            medical_keywords = ["glucose", "gluco", "diabetes", "insulin", "pump",
+                               "pressure", "bp", "pulse", "oximeter", "heart",
+                               "medical", "med", "patient", "vital"]
+            if any(keyword in text for keyword in medical_keywords):
+                return False  # To może być urządzenie medyczne - nie filtruj
+            return True
+        
+        # Porty wirtualne (np. Bluetooth Serial) są zwykle wewnętrzne
+        if "bluetooth" in text and "serial" in text:
+            return True
+        
+        return False
+    
     def _scan_serial(self) -> List[Device]:
         """
         Skanuje urządzenia szeregowe (COM ports) używając pyserial.
         Automatycznie wykrywa mikrokontrolery i monitoruje ich komunikaty.
+        Filtruje porty wewnętrzne (część laptopa).
         
         Returns:
-            Lista wykrytych urządzeń szeregowych
+            Lista wykrytych urządzeń szeregowych (tylko zewnętrzne)
         """
         devices: List[Device] = []
         
@@ -155,12 +347,19 @@ class USBScanner:
             # Znajdź wszystkie porty szeregowe
             ports = serial.tools.list_ports.comports()
             
+            filtered_count = 0
+            
             for port in ports:
+                # Pomiń porty wewnętrzne
+                if self._is_internal_serial_port(port):
+                    filtered_count += 1
+                    continue
+                
                 # Sprawdź czy port może być urządzeniem medycznym lub mikrokontrolerem
                 is_medical = self._is_medical_device(port)
                 is_microcontroller = self._is_microcontroller(port)
                 
-                # Skanuj wszystkie dostępne porty szeregowe
+                # Skanuj wszystkie dostępne porty szeregowe (które nie są wewnętrzne)
                 if is_medical or is_microcontroller:
                     # Automatycznie wykryj prędkość i monitoruj komunikaty (tylko dla mikrokontrolerów)
                     if is_microcontroller:
@@ -226,6 +425,10 @@ class USBScanner:
                     
                     device.calculate_security_score()
                     devices.append(device)
+            
+            # Wyświetl informację o przefiltrowanych portach
+            if filtered_count > 0:
+                console.print(f"[dim]   Pominięto {filtered_count} portów wewnętrznych[/dim]")
         
         except Exception as e:
             console.print(f"[yellow]⚠️  Błąd skanowania portów szeregowych: {e}[/yellow]")

@@ -258,7 +258,9 @@ class RealBLEScanner:
             Lista wykrytych urządzeń Device
         """
         console.print(f"[cyan]🔍 Rozpoczynam skanowanie BLE ({duration}s)...[/cyan]")
-        console.print("[dim]Skanuję rzeczywiste urządzenia Bluetooth w zasięgu...[/dim]\n")
+        console.print("[dim]Skanuję rzeczywiste urządzenia Bluetooth w zasięgu...[/dim]")
+        console.print("[dim]💡 Fizyczne urządzenie: Adapter Bluetooth w laptopie[/dim]")
+        console.print("[dim]💡 Wykrywam tylko urządzenia w zasięgu (RSSI > -90 dBm)[/dim]\n")
         
         devices: List[Device] = []
         # Set (zbiór) przechowuje unikalne adresy MAC, aby uniknąć duplikatów
@@ -338,12 +340,30 @@ class RealBLEScanner:
             console.print("[cyan]🔒 Analizuję właściwości bezpieczeństwa urządzeń...[/cyan]")
             console.print("[dim]ℹ️  Błędy połączenia są normalne - większość urządzeń wymaga parowania (to jest bezpieczne!)[/dim]\n")
             
+            # Filtruj urządzenia na podstawie RSSI (tylko te w zasięgu)
+            # RSSI < -90 dBm oznacza bardzo słaby sygnał (urządzenie daleko lub nieaktywne)
+            # RSSI > -90 dBm oznacza urządzenie w zasięgu
+            filtered_addresses = []
+            for address in discovered_devices:
+                ad_data = self.advertisement_data.get(address)
+                if ad_data and ad_data.rssi:
+                    # Tylko urządzenia z RSSI > -90 dBm (w zasięgu)
+                    if ad_data.rssi > -90:
+                        filtered_addresses.append(address)
+                else:
+                    # Jeśli nie ma RSSI, zaakceptuj (może być dostępne później)
+                    filtered_addresses.append(address)
+            
+            # Jeśli przefiltrowano urządzenia, wyświetl informację
+            if len(discovered_devices) > len(filtered_addresses):
+                console.print(f"[dim]   Pominięto {len(discovered_devices) - len(filtered_addresses)} urządzeń poza zasięgiem (RSSI < -90 dBm)[/dim]\n")
+            
             with Progress(
                 SpinnerColumn(),
                 TextColumn("[progress.description]{task.description}"),
                 console=console
             ) as progress:
-                for address in discovered_devices:
+                for address in filtered_addresses:
                     # Pobierz nazwę urządzenia z zapisanych danych (szybsze wyświetlanie)
                     device_display_name = self.device_names.get(address) or "Unknown Device"
                     task = progress.add_task(f"Analizuję {device_display_name}...", total=None)

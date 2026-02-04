@@ -57,17 +57,22 @@ python3 src/scanner.py --api --api-port 8080
 Skaner automatycznie wykonuje:
 
 1. **Eksport do SIEM** - format JSON Lines (uniwersalny dla ELK Stack)
-   - Plik: `siem_export_YYYYMMDD_HHMMSS.jsonl`
+   - Plik: `exports/siem_export_YYYYMMDD_HHMMSS.jsonl`
    - Wyłącz: `--no-siem`
 
 2. **Threat Intelligence** - sprawdzanie IP w bazach zagrożeń
    - Wymaga klucza API (AbuseIPDB, VirusTotal, Shodan)
-   - Plik: `threat_intel_YYYYMMDD_HHMMSS.json`
+   - Dane w `combined_report_*.json` (sekcja `threat_intelligence`)
    - Wyłącz: `--no-threat-intel`
 
 3. **Historia skanowań** - automatyczne zapisywanie do bazy danych SQLite
    - Plik: `history.db`
    - Zawsze włączone (automatyczne)
+
+4. **Combined Report** - kompleksowy raport z wszystkimi danymi
+   - Plik: `reports/combined_report_YYYY-MM-DD_HH-MM-SS.json`
+   - Zawiera: skanowanie + analiza + threat intelligence
+   - Zawsze tworzony (domyślnie)
 
 **Wyłączanie automatycznych funkcji:**
 ```bash
@@ -76,6 +81,31 @@ python3 src/scanner.py --no-siem --no-threat-intel
 
 # Tylko bez Threat Intelligence
 python3 src/scanner.py --no-threat-intel
+```
+
+## 📄 Raportowanie
+
+| Flaga | Opis |
+|-------|------|
+| `--legacy-reports` | Twórz również stare pliki (scan_*.json, report_*.json) - domyślnie tylko combined_report_*.json |
+
+**Domyślnie:**
+- ✅ `combined_report_*.json` - **ZALECANY** - wszystkie dane w jednym pliku
+- ❌ `scan_*.json` - nie tworzony (tylko z `--legacy-reports`)
+- ❌ `report_*.json` - nie tworzony (tylko z `--legacy-reports`)
+
+**Z `--legacy-reports`:**
+- ✅ `combined_report_*.json` - wszystkie dane
+- ✅ `scan_*.json` - surowe dane (duplikat)
+- ✅ `report_*.json` - analiza (duplikat)
+
+**Przykład:**
+```bash
+# Tylko combined_report_*.json (domyślnie)
+python3 src/scanner.py
+
+# Z wszystkimi plikami (dla kompatybilności wstecznej)
+python3 src/scanner.py --legacy-reports
 ```
 
 ## 📅 Zaplanowane Skanowania
@@ -98,27 +128,25 @@ python3 src/scanner.py --schedule "every 30 minutes"
 
 ## 📧 Powiadomienia Email
 
-| Flaga | Opis |
-|-------|------|
-| `--email EMAIL ...` | Wyślij raport emailem po skanowaniu |
-| `--email-alerts EMAIL ...` | Adresy email do alertów (z monitoringiem) |
+**⚠️ UWAGA:** Flagi email nie są jeszcze zaimplementowane w kodzie. Funkcjonalność jest planowana.
 
-**Wymaga konfiguracji w `.env`:**
+| Flaga | Status | Opis |
+|-------|--------|------|
+| `--email EMAIL ...` | ⏳ Planowane | Wyślij raport emailem po skanowaniu |
+| `--email-alerts EMAIL ...` | ⏳ Planowane | Adresy email do alertów (z monitoringiem) |
+
+**Aktualny status:**
+- Funkcjonalność email jest opisana w dokumentacji `FUNKCJONALNOSCI.md`
+- Kod nie jest jeszcze zaimplementowany
+- Monitor wspiera email_recipients jako parametr, ale nie ma flag CLI
+
+**Gdy będzie dostępne, wymaga konfiguracji w `.env`:**
 ```bash
 SMTP_SERVER=smtp.gmail.com
 SMTP_PORT=587
 SMTP_USER=twoj_email@gmail.com
 SMTP_PASSWORD=twoje_haslo
 EMAIL_FROM=twoj_email@gmail.com
-```
-
-**Przykłady:**
-```bash
-# Wyślij raport emailem
-python3 src/scanner.py --email admin@hospital.com
-
-# Do wielu odbiorców
-python3 src/scanner.py --email admin@hospital.com security@hospital.com
 ```
 
 ## 🔍 Real-time Monitoring
@@ -136,8 +164,8 @@ python3 src/scanner.py --monitor
 # Monitoring co 1 minutę
 python3 src/scanner.py --monitor --interval 60
 
-# Z alertami email
-python3 src/scanner.py --monitor --email-alerts admin@hospital.com
+# Monitoring z interwałem (bez email - email nie jest jeszcze zaimplementowany)
+python3 src/scanner.py --monitor --interval 60
 ```
 
 ## 📡 Mikrokontroler (ESP32)
@@ -194,11 +222,11 @@ python3 src/scanner.py --api --no-siem --no-threat-intel
 # Skanowanie USB i BLE z API
 python3 src/scanner.py --usb --ble --api
 
-# Codzienne skanowanie z raportem emailem
-python3 src/scanner.py --schedule "daily 09:00" --email admin@hospital.com
+# Codzienne skanowanie
+python3 src/scanner.py --schedule "daily 09:00"
 
-# Monitoring z alertami
-python3 src/scanner.py --monitor --interval 300 --email-alerts admin@hospital.com
+# Monitoring z interwałem
+python3 src/scanner.py --monitor --interval 300
 ```
 
 ## 🎯 Najczęściej Używane
@@ -213,8 +241,8 @@ python3 src/scanner.py --wifi --api
 # Pełny audyt bezpieczeństwa
 python3 src/scanner.py --audit
 
-# Codzienne skanowanie z raportem emailem
-python3 src/scanner.py --schedule "daily 09:00" --email admin@hospital.com
+# Codzienne skanowanie
+python3 src/scanner.py --schedule "daily 09:00"
 
 # Monitoring w czasie rzeczywistym
 python3 src/scanner.py --monitor --interval 300
@@ -237,10 +265,18 @@ SHODAN_API_KEY=twoj_klucz
 
 Skaner automatycznie generuje:
 
-- `scan_YYYYMMDD_HHMMSS.json` - Wyniki skanowania
-- `report_YYYYMMDD_HHMMSS.json` - Pełny raport
-- `siem_export_YYYYMMDD_HHMMSS.jsonl` - Eksport SIEM (automatycznie)
-- `threat_intel_YYYYMMDD_HHMMSS.json` - Threat Intelligence (automatycznie, jeśli API dostępne)
+### Domyślnie (Zalecane):
+- ✅ `reports/combined_report_YYYY-MM-DD_HH-MM-SS.json` - **ZALECANY** - wszystkie dane w jednym pliku
+  - Zawiera: skanowanie + analiza + threat intelligence
+- ✅ `exports/siem_export_YYYYMMDD_HHMMSS.jsonl` - Eksport SIEM (automatycznie)
+- ✅ `history.db` - Historia skanowań (SQLite)
+
+### Z `--legacy-reports`:
+- ✅ `reports/combined_report_*.json` - wszystkie dane
+- ✅ `reports/scan_YYYY-MM-DD_HH-MM-SS.json` - Surowe dane (duplikat z combined_report)
+- ✅ `reports/report_YYYY-MM-DD_HH-MM-SS.json` - Analiza (duplikat z combined_report)
+
+**Uwaga:** Threat Intelligence jest teraz w `combined_report_*.json` (sekcja `threat_intelligence`), nie w osobnym pliku.
 
 ## 💡 Wskazówki
 
@@ -250,6 +286,30 @@ Skaner automatycznie generuje:
 4. **Z API:** `--api` - otwiera przeglądarkę z wynikami
 5. **Bez automatycznych funkcji:** `--no-siem --no-threat-intel` - jeśli nie potrzebujesz
 6. **Mikrokontroler ESP32:** `python3 scripts/esp32_serial_reader.py --out wyniki_esp32.json --enrich` – odbiór BLE/WiFi z ESP32 przez USB
+
+## 📋 Pełna Lista Wszystkich Flag
+
+| Flaga | Typ | Opis | Domyślnie |
+|-------|-----|------|-----------|
+| `--ble` | boolean | Skanuj tylko Bluetooth Low Energy | ❌ |
+| `--wifi` | boolean | Skanuj tylko WiFi (sieć lokalna) | ❌ |
+| `--usb` | boolean | Skanuj tylko USB (urządzenia podłączone) | ❌ |
+| `--nfc` | boolean | Skanuj tylko NFC (karty i tagi) | ❌ |
+| `--no-wifi` | boolean | Pomiń WiFi (tylko urządzenia bezpośrednio podłączone) | ❌ |
+| `--audit` | boolean | Pełny audyt bezpieczeństwa (testy podatności) | ❌ |
+| `--api` | boolean | Uruchom API server po skanowaniu | ❌ |
+| `--api-port PORT` | integer | Port dla API server | 5000 |
+| `--no-siem` | boolean | Wyłącz automatyczny eksport do SIEM | ✅ Włączony |
+| `--no-threat-intel` | boolean | Wyłącz automatyczne sprawdzanie threat intelligence | ✅ Włączony |
+| `--legacy-reports` | boolean | Twórz również stare pliki (scan_*.json, report_*.json) | ❌ |
+| `--schedule SCHEDULE` | string | Zaplanuj skanowanie (np. "daily 09:00") | ❌ |
+| `--monitor` | boolean | Uruchom monitoring w czasie rzeczywistym | ❌ |
+| `--interval SECONDS` | integer | Interwał monitoringu w sekundach | 300 |
+
+**Uwagi:**
+- Jeśli nie podasz żadnej flagi protokołu (`--ble`, `--wifi`, etc.), skaner automatycznie skanuje wszystkie dostępne protokoły
+- `--no-siem` i `--no-threat-intel` wyłączają funkcje które są domyślnie włączone
+- `--legacy-reports` tworzy dodatkowe pliki (duplikaty danych z `combined_report_*.json`)
 
 ## ❓ Pomoc
 

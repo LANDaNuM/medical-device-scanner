@@ -1,19 +1,66 @@
-# 🚀 Nowe Funkcjonalności - Instrukcja
+# ✅ Funkcjonalności Skanera Urządzeń Medycznych
 
-## ✅ Co Zostało Dodane
+## 🎯 Obecne Funkcjonalności
 
-### 1. 📅 Scheduled Scans (Zaplanowane Skanowania)
-### 2. 📧 Email Notifications (Powiadomienia Email)
-### 3. 📈 History & Trends (Historia i Trendy)
-### 4. 🔍 Real-time Monitoring (Monitoring w Czasie Rzeczywistym)
+### 📡 Skanowanie Protokołów
+- ✅ **BLE (Bluetooth Low Energy)** - rzeczywiste skanowanie urządzeń
+- ✅ **WiFi** - skanowanie sieci lokalnej (zoptymalizowane Rust)
+- ✅ **USB** - wykrywanie urządzeń podłączonych
+- ✅ **NFC** - skanowanie kart i tagów
+- ✅ **Mikrokontrolery** - automatyczne wykrywanie portów szeregowych
+
+### 🔒 Analiza Bezpieczeństwa
+- ✅ **Security Score** (0-100) - automatyczna ocena bezpieczeństwa
+- ✅ **Wykrywanie szyfrowania** - analiza dla każdego protokołu
+- ✅ **Wykrywanie parowania** - sprawdzanie autoryzacji
+- ✅ **Lista podatności** - automatyczne wykrywanie
+- ✅ **CVE Lookup** - sprawdzanie znanych podatności
+- ✅ **Encryption Analysis** - szczegółowa analiza szyfrowania
+- ✅ **FDA Compliance** - sprawdzanie zgodności z wytycznymi FDA
+
+### 🤖 AI/ML
+- ✅ **Anomaly Detection** - zawsze włączone (ML + heurystyka)
+- ✅ **Ensemble ML** - Isolation Forest + LOF + One-Class SVM
+- ✅ **Heurystyka fallback** - gdy za mało danych dla ML
+
+### 🔍 Testy Podatności
+- ✅ **Port Scanning** - skanowanie otwartych portów
+- ✅ **Vulnerability Testing** (--audit) - testy podatności
+- ✅ **Medical Port Detection** - wykrywanie portów medycznych (DICOM, HL7)
+
+### 📊 Raportowanie
+- ✅ **JSON Reports** - pełne raporty w JSON (combined_report_*.json)
+- ✅ **CSV Export** - eksport do CSV
+- ✅ **PDF Reports** - raporty PDF
+- ✅ **SIEM Export** - automatyczny eksport (JSON Lines)
+- ✅ **Threat Intelligence** - automatyczne sprawdzanie IP (VirusTotal, AbuseIPDB, Shodan)
+
+### 🌐 Interfejs Webowy
+- ✅ **API Server** (--api) - REST API + HTML dashboard
+- ✅ **Dashboard** - interfejs graficzny w przeglądarce
+- ✅ **Auto-shutdown** - automatyczne zamykanie przy zamknięciu przeglądarki
+- ✅ **Filtrowanie** - filtrowanie urządzeń w interfejsie
+- ✅ **Statystyki** - szczegółowe statystyki skanowania
+
+### 🔗 Integracje
+- ✅ **Splunk** - import danych do Splunk Free
+- ✅ **Threat Intelligence APIs** - AbuseIPDB, VirusTotal, Shodan
+- ✅ **External APIs** - wzbogacanie danych z zewnętrznych źródeł
+
+### ⚙️ Automatyzacja
+- ✅ **Automatyczny eksport SIEM** - domyślnie włączony
+- ✅ **Automatyczne Threat Intelligence** - domyślnie włączone
+- ✅ **Automatyczne wykrywanie mikrokontrolerów** - porty i baudrate
 
 ---
 
-## 📅 1. Scheduled Scans
+## 🚀 Nowe Funkcjonalności
+
+### 1. 📅 Scheduled Scans (Zaplanowane Skanowania)
 
 Automatyczne skanowanie o określonych godzinach.
 
-### Użycie:
+#### Użycie:
 
 ```bash
 # Codziennie o 9:00
@@ -29,7 +76,7 @@ python3 src/scanner.py --schedule "every 30 minutes"
 python3 src/scanner.py --schedule "every 2 hours"
 ```
 
-### Przykłady:
+#### Przykłady:
 
 ```bash
 # Codziennie o 9:00 rano
@@ -45,17 +92,17 @@ python3 src/scanner.py --wifi --schedule "daily 09:00"
 python3 src/scanner.py --audit --schedule "daily 09:00"
 ```
 
-### Zatrzymywanie:
+#### Zatrzymywanie:
 
 Naciśnij `Ctrl+C` aby zatrzymać scheduler.
 
 ---
 
-## 📧 2. Email Notifications
+### 2. 📧 Email Notifications (Powiadomienia Email)
 
 Wysyłanie raportów i alertów emailem.
 
-### Konfiguracja (.env):
+#### Konfiguracja (.env):
 
 ```bash
 # Gmail
@@ -102,7 +149,7 @@ ProtonMail **nie obsługuje bezpośredniego SMTP**. Musisz użyć **ProtonMail B
 
 4. **Uwaga:** ProtonMail Bridge musi być **uruchomiony** podczas wysyłania emaili!
 
-### Użycie:
+#### Użycie:
 
 ```bash
 # Wyślij raport emailem po skanowaniu
@@ -115,7 +162,7 @@ python3 src/scanner.py --email admin@hospital.com security@hospital.com
 python3 src/scanner.py --email admin@hospital.com
 ```
 
-### Alerty (z monitoringiem):
+#### Alerty (z monitoringiem):
 
 ```bash
 # Alerty o nowych urządzeniach i zmianach ryzyka
@@ -124,21 +171,21 @@ python3 src/scanner.py --monitor --email-alerts admin@hospital.com
 
 ---
 
-## 📈 3. History & Trends
+### 3. 📈 History & Trends (Historia i Trendy)
 
 Automatyczne zapisywanie historii skanowań do bazy danych SQLite.
 
-### Automatyczne:
+#### Automatyczne:
 
 Historia jest **automatycznie zapisywana** przy każdym skanowaniu!
 
-### Plik bazy danych:
+#### Plik bazy danych:
 
 ```
 history.db  # W katalogu projektu
 ```
 
-### Funkcje:
+#### Funkcje:
 
 - ✅ Zapis każdego skanowania
 - ✅ Historia urządzeń (zmiany security score)
@@ -146,7 +193,7 @@ history.db  # W katalogu projektu
 - ✅ Trendy bezpieczeństwa (ostatnie 30 dni)
 - ✅ Statystyki
 
-### Użycie w kodzie:
+#### Użycie w kodzie:
 
 ```python
 from history_db import HistoryDB
@@ -162,13 +209,38 @@ trends = history_db.get_trends(days=30)
 new_devices = history_db.detect_new_devices(current_devices)
 ```
 
+#### API:
+
+```python
+# Pobierz ostatnie skanowania
+scans = history_db.get_recent_scans(limit=10)
+
+for scan in scans:
+    print(f"Data: {scan.timestamp}")
+    print(f"Urządzeń: {scan.total_devices}")
+    print(f"Średni score: {scan.avg_security_score}")
+
+# Pobierz trendy
+trends = history_db.get_trends(days=30)
+
+# Wykresy:
+# trends['timestamps'] - daty
+# trends['avg_scores'] - średnie security scores
+# trends['high_risk'] - liczba urządzeń wysokiego ryzyka
+
+# Wykryj nowe urządzenia
+new_devices = history_db.detect_new_devices(current_devices)
+if new_devices:
+    print(f"Wykryto {len(new_devices)} nowych urządzeń!")
+```
+
 ---
 
-## 🔍 4. Real-time Monitoring
+### 4. 🔍 Real-time Monitoring (Monitoring w Czasie Rzeczywistym)
 
 Ciągłe skanowanie w tle z alertami.
 
-### Użycie:
+#### Użycie:
 
 ```bash
 # Monitoring co 5 minut (domyślnie)
@@ -184,7 +256,7 @@ python3 src/scanner.py --monitor --email-alerts admin@hospital.com
 python3 src/scanner.py --wifi --monitor --interval 600
 ```
 
-### Co robi:
+#### Co robi:
 
 1. **Skanuje w pętlach** (co X sekund)
 2. **Wykrywa nowe urządzenia** - alertuje gdy pojawi się nowe
@@ -192,7 +264,7 @@ python3 src/scanner.py --wifi --monitor --interval 600
 4. **Zapisuje do historii** - każdy skan jest zapisywany
 5. **Wysyła alerty email** - jeśli skonfigurowane
 
-### Przykłady:
+#### Przykłady:
 
 ```bash
 # Podstawowy monitoring (co 5 minut)
@@ -208,13 +280,13 @@ python3 src/scanner.py --monitor --email-alerts admin@hospital.com security@hosp
 python3 src/scanner.py --audit --monitor --interval 1800
 ```
 
-### Zatrzymywanie:
+#### Zatrzymywanie:
 
 Naciśnij `Ctrl+C` aby zatrzymać monitor.
 
 ---
 
-## 🎯 Kombinacje
+## 🎯 Kombinacje Funkcjonalności
 
 ### Codzienne raporty emailem:
 
@@ -233,43 +305,6 @@ python3 src/scanner.py --monitor --interval 300 --email-alerts admin@hospital.co
 ```bash
 # Codziennie o 9:00, z raportem emailem
 python3 src/scanner.py --schedule "daily 09:00" --email admin@hospital.com --audit
-```
-
----
-
-## 📊 Historia i Trendy - API
-
-### Pobierz ostatnie skanowania:
-
-```python
-from history_db import HistoryDB
-
-history_db = HistoryDB()
-scans = history_db.get_recent_scans(limit=10)
-
-for scan in scans:
-    print(f"Data: {scan.timestamp}")
-    print(f"Urządzeń: {scan.total_devices}")
-    print(f"Średni score: {scan.avg_security_score}")
-```
-
-### Pobierz trendy:
-
-```python
-trends = history_db.get_trends(days=30)
-
-# Wykresy:
-# trends['timestamps'] - daty
-# trends['avg_scores'] - średnie security scores
-# trends['high_risk'] - liczba urządzeń wysokiego ryzyka
-```
-
-### Wykryj nowe urządzenia:
-
-```python
-new_devices = history_db.detect_new_devices(current_devices)
-if new_devices:
-    print(f"Wykryto {len(new_devices)} nowych urządzeń!")
 ```
 
 ---
@@ -295,7 +330,7 @@ pip install -r requirements.txt
 
 ---
 
-## ❓ Problemy?
+## ❓ Rozwiązywanie Problemów
 
 ### Email nie działa:
 - Sprawdź konfigurację SMTP w `.env`
@@ -312,6 +347,9 @@ pip install -r requirements.txt
 
 ---
 
-## 🎉 Gotowe!
+## 📚 Więcej Informacji
 
-Wszystkie 4 funkcjonalności są gotowe do użycia! 🚀
+- **Flagi i opcje:** Zobacz `docs/FLAGI.md`
+- **Jak uruchomić:** Zobacz `docs/JAK_URUCHOMIC.md`
+- **Jak zobaczyć wyniki:** Zobacz `docs/JAK_ZOBACZYC_WYNIKI.md`
+- **Konfiguracja API:** Zobacz `docs/JAK_DODAC_KLUCZE_API.md`

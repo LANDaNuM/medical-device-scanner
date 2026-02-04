@@ -98,8 +98,11 @@ git commit -m "Dodano nowe funkcjonalności i poprawki"
 
 ### Pierwszy push (ustaw upstream):
 ```bash
-# Push na branch main
+# Push na branch main (USTAWIA upstream automatycznie)
 git push -u origin main
+
+# Lub użyj pełnej komendy (to samo co -u):
+git push --set-upstream origin main
 
 # Lub jeśli Twój branch nazywa się master
 git push -u origin master
@@ -108,12 +111,30 @@ git push -u origin master
 git push -u origin nazwa-brancha
 ```
 
+### ⚠️ Błąd: "The current branch main has no upstream branch"
+
+Jeśli widzisz ten błąd:
+```bash
+fatal: The current branch main has no upstream branch.
+To push the current branch and set the remote as upstream, use
+    git push --set-upstream origin main
+```
+
+**Rozwiązanie:** Użyj komendy którą Git sugeruje:
+```bash
+git push --set-upstream origin main
+# LUB krócej:
+git push -u origin main
+```
+
+Po pierwszym pushu z `-u`, kolejne pushy będą działać z samym `git push`.
+
 ### Kolejne pushy (po pierwszym):
 ```bash
-# Prosty push
+# Prosty push (działa tylko jeśli ustawiłeś upstream z -u)
 git push
 
-# Lub z podaniem brancha
+# Lub z podaniem brancha (zawsze działa)
 git push origin main
 ```
 
@@ -138,15 +159,47 @@ git add .
 git commit -m "Opis Twoich zmian"
 
 # 4. Push na GitHub
-git push
-
-# Lub jeśli pierwszy raz:
+# Jeśli pierwszy raz (lub widzisz błąd "no upstream branch"):
 git push -u origin main
+
+# Jeśli już ustawiłeś upstream wcześniej:
+git push
+```
+
+### 🔍 Sprawdź czy masz ustawiony upstream:
+```bash
+# Sprawdź tracking branch
+git branch -vv
+
+# Jeśli widzisz "[origin/main]" to upstream jest ustawiony
+# Jeśli nie widzisz, użyj: git push -u origin main
 ```
 
 ---
 
 ## 🆘 Rozwiązywanie Problemów
+
+### Błąd: "The current branch main has no upstream branch"
+
+**Problem:** Próbujesz zrobić `git push` ale Git nie wie gdzie pushować.
+
+**Rozwiązanie:**
+```bash
+# Ustaw upstream i push jednocześnie
+git push -u origin main
+
+# Lub jeśli Twój branch nazywa się inaczej:
+git push -u origin nazwa-twojego-brancha
+```
+
+**Sprawdź czy działa:**
+```bash
+# Po ustawieniu upstream, sprawdź:
+git branch -vv
+# Powinieneś zobaczyć: * main [origin/main] ...
+
+# Teraz `git push` będzie działać bez `-u`
+```
 
 ### Jeśli masz konflikt z remote:
 ```bash

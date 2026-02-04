@@ -269,6 +269,8 @@ class WiFiScanner:
         """
         console.print("[cyan]🔍 Rozpoczynam skanowanie WiFi...[/cyan]")
         console.print("[dim]Skanuję urządzenia w sieci lokalnej (tylko aktywne urządzenia z otwartymi portami)...[/dim]")
+        console.print("[dim]💡 Fizyczne urządzenie: Karta WiFi w laptopie[/dim]")
+        console.print("[dim]💡 Skanuję TYLKO urządzenia w TEJ SAMEJ sieci WiFi (do której jesteś podłączony)[/dim]")
         console.print("[dim]💡 Wykrywam tylko urządzenia które odpowiadają na ping I mają otwarte porty[/dim]\n")
         
         devices: List[Device] = []
@@ -306,8 +308,42 @@ class WiFiScanner:
         # Priorytet 3: Podstawowe skanowanie używając ping i socket (nie wymaga uprawnień)
         devices = self._scan_basic(network_range)
         
-        self.scanned_devices = devices
-        return devices
+        # Deduplikacja urządzeń - usuń duplikaty na podstawie MAC lub IP
+        unique_devices = []
+        seen_macs = set()
+        seen_ips = set()
+        
+        for device in devices:
+            mac = device.mac_address
+            ip = device.metadata.get('ip_address') if device.metadata else None
+            
+            # Sprawdź czy to duplikat
+            is_duplicate = False
+            
+            # Jeśli MAC jest wygenerowany (00:00:xx), sprawdź po IP
+            if mac.startswith("00:00:"):
+                if ip and ip in seen_ips:
+                    is_duplicate = True
+                elif ip:
+                    seen_ips.add(ip)
+            else:
+                # Dla prawdziwych MAC, sprawdź po MAC
+                if mac in seen_macs:
+                    is_duplicate = True
+                else:
+                    seen_macs.add(mac)
+                    if ip:
+                        seen_ips.add(ip)
+            
+            if not is_duplicate:
+                unique_devices.append(device)
+        
+        # Jeśli usunięto duplikaty, wyświetl informację
+        if len(devices) > len(unique_devices):
+            console.print(f"[dim]   Usunięto {len(devices) - len(unique_devices)} duplikatów urządzeń[/dim]")
+        
+        self.scanned_devices = unique_devices
+        return unique_devices
     
     def _detect_local_network(self) -> Optional[str]:
         """

@@ -505,13 +505,35 @@ class MedicalDeviceScanner:
                 if enriched.get('virustotal'):
                     vt_data = enriched['virustotal']
                     if vt_data.get('malicious', 0) > 0:
-                        device.add_vulnerability(
-                            f"VirusTotal: IP flagged as malicious ({vt_data['malicious']} detections)"
-                        )
+                        # Dodaj szczegóły detekcji jeśli dostępne
+                        detections = vt_data.get('detections', [])
+                        if detections:
+                            # Pokaż pierwsze 3 antywirusy które wykryły zagrożenie
+                            engines = [d.get('engine', 'Unknown') for d in detections[:3]]
+                            engines_str = ', '.join(engines)
+                            if len(detections) > 3:
+                                engines_str += f" (+{len(detections) - 3} więcej)"
+                            device.add_vulnerability(
+                                f"VirusTotal: IP flagged as malicious ({vt_data['malicious']} detections) - wykryte przez: {engines_str}"
+                            )
+                        else:
+                            device.add_vulnerability(
+                                f"VirusTotal: IP flagged as malicious ({vt_data['malicious']} detections)"
+                            )
                     elif vt_data.get('suspicious', 0) > 0:
-                        device.add_vulnerability(
-                            f"VirusTotal: IP flagged as suspicious ({vt_data['suspicious']} detections)"
-                        )
+                        detections = vt_data.get('detections', [])
+                        if detections:
+                            engines = [d.get('engine', 'Unknown') for d in detections[:3]]
+                            engines_str = ', '.join(engines)
+                            if len(detections) > 3:
+                                engines_str += f" (+{len(detections) - 3} więcej)"
+                            device.add_vulnerability(
+                                f"VirusTotal: IP flagged as suspicious ({vt_data['suspicious']} detections) - wykryte przez: {engines_str}"
+                            )
+                        else:
+                            device.add_vulnerability(
+                                f"VirusTotal: IP flagged as suspicious ({vt_data['suspicious']} detections)"
+                            )
                 
                 if enriched.get('shodan'):
                     shodan_data = enriched['shodan']
@@ -1282,6 +1304,147 @@ class MedicalDeviceScanner:
             console.print(f"[red]❌ Błąd generowania raportu JSON: {e}[/red]")
             return ""
     
+    def generate_combined_report(self, threat_intel_data: Optional[Dict[str, Any]] = None) -> str:
+        """
+        Generuje jeden kompleksowy plik JSON łączący wszystkie dane:
+        - Surowe dane ze skanowania (scan)
+        - Analiza bezpieczeństwa (report)
+        - Threat intelligence (jeśli dostępne)
+        
+        Args:
+            threat_intel_data: Dane threat intelligence (opcjonalne)
+        
+        Returns:
+            Ścieżka do zapisanego pliku lub pusty string jeśli błąd
+        """
+        if not self.devices:
+            console.print("[yellow]⚠️  Brak urządzeń do raportowania[/yellow]")
+            return ""
+        
+        timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        filename = f"combined_report_{timestamp}.json"
+        filepath = self.reports_dir / filename
+        
+        # Przygotuj dane ze skanowania (surowe)
+        scan_data = {
+            "scan_timestamp": datetime.now().isoformat(),
+            "total_devices": len(self.devices),
+            "protocols_scanned": list(self.scanners.keys()),
+            "devices": [device.to_dict() for device in self.devices]
+        }
+        
+        # Przygotuj dane z analizy bezpieczeństwa (report)
+        total_devices = len(self.devices)
+        high_risk = [d for d in self.devices if d.security_score < 50]
+        medium_risk = [d for d in self.devices if 50 <= d.security_score < 80]
+        low_risk = [d for d in self.devices if d.security_score >= 80]
+        
+        devices_without_encryption = [d for d in self.devices if not d.has_encryption]
+        devices_without_pairing = [d for d in self.devices if not d.requires_pairing]
+        fda_non_compliant = [d for d in self.devices if not d.metadata.get("fda_compliance", True)]
+        
+        encryption_stats = self._calculate_encryption_stats()
+        
+        report_data = {
+            "summary": {
+                "total_devices": total_devices,
+                "high_risk_count": len(high_risk),
+                "medium_risk_count": len(medium_risk),
+                "low_risk_count": len(low_risk),
+                "devices_without_encryption": len(devices_without_encryption),
+                "devices_without_pairing": len(devices_without_pairing),
+                "fda_non_compliant": len(fda_non_compliant),
+                "average_security_score": sum(d.security_score for d in self.devices) / total_devices if total_devices > 0 else 0,
+                "encryption_stats": encryption_stats
+            },
+            "risk_groups": {
+                "high_risk": [d.to_dict() for d in high_risk],
+                "medium_risk": [d.to_dict() for d in medium_risk],
+                "low_risk": [d.to_dict() for d in low_risk]
+            },
+            "vulnerabilities": {
+                "no_encryption": [d.to_dict() for d in devices_without_encryption],
+                "no_pairing": [d.to_dict() for d in devices_without_pairing],
+                "fda_non_compliant": [d.to_dict() for d in fda_non_compliant]
+            }
+        }
+        
+        # Powiąż threat intelligence z urządzeniami
+        # Dodaj informacje o threat intelligence do każdego urządzenia
+        devices_with_threat_intel = []
+        for device in self.devices:
+            device_dict = device.to_dict()
+            
+            # Znajdź threat intelligence dla tego urządzenia
+            device_ip = device_dict.get('ip_address') or device.metadata.get('ip_address') or device.metadata.get('ip')
+            if device_ip and threat_intel_data:
+                threat_info = threat_intel_data.get(device_ip)
+                if threat_info:
+                    # Dodaj threat intelligence bezpośrednio do urządzenia
+                    device_dict['threat_intelligence'] = threat_info
+                    device_dict['threat_intelligence_linked'] = True
+                else:
+                    device_dict['threat_intelligence_linked'] = False
+            else:
+                device_dict['threat_intelligence_linked'] = False
+            
+            devices_with_threat_intel.append(device_dict)
+        
+        # Zaktualizuj scan_data z urządzeniami zawierającymi threat intelligence
+        scan_data["devices"] = devices_with_threat_intel
+        
+        # Połącz wszystkie dane w jeden plik
+        combined_data = {
+            "report_timestamp": datetime.now().isoformat(),
+            "scan": scan_data,
+            "analysis": report_data,
+            "threat_intelligence": threat_intel_data if threat_intel_data else {}
+        }
+        
+        # Dodaj informację o threat intelligence
+        if threat_intel_data:
+            threats_found = sum(1 for r in threat_intel_data.values() if r.get('is_threat', False))
+            # Dodaj mapowanie IP -> urządzenia dla łatwego wyszukiwania
+            ip_to_devices = {}
+            for device in devices_with_threat_intel:
+                device_ip = device.get('ip_address')
+                if device_ip:
+                    if device_ip not in ip_to_devices:
+                        ip_to_devices[device_ip] = []
+                    ip_to_devices[device_ip].append({
+                        'display_name': device.get('display_name', device.get('name', 'Unknown')),
+                        'mac_address': device.get('mac_address'),
+                        'device_fingerprint': device.get('device_fingerprint'),
+                        'protocol': device.get('protocol')
+                    })
+            
+            combined_data["threat_intelligence_summary"] = {
+                "total_ips_checked": len(threat_intel_data),
+                "threats_found": threats_found,
+                "clean_ips": len(threat_intel_data) - threats_found,
+                "ip_to_devices": ip_to_devices  # Mapowanie IP -> urządzenia
+            }
+        else:
+            combined_data["threat_intelligence_summary"] = {
+                "total_ips_checked": 0,
+                "threats_found": 0,
+                "clean_ips": 0,
+                "note": "Threat intelligence not available or disabled"
+            }
+        
+        try:
+            # Konwertuj wszystkie wartości na serializowalne do JSON
+            combined_data_serializable = make_json_serializable(combined_data)
+            with open(filepath, 'w', encoding='utf-8') as f:
+                json.dump(combined_data_serializable, f, indent=2, ensure_ascii=False)
+            
+            console.print(f"[green]✅ Wygenerowano kompleksowy raport: {filepath}[/green]")
+            console.print(f"[dim]   Zawiera: skanowanie + analiza + threat intelligence[/dim]")
+            return str(filepath)
+        except Exception as e:
+            console.print(f"[red]❌ Błąd generowania kompleksowego raportu: {e}[/red]")
+            return ""
+    
     def export_to_pdf(self, output_path: Optional[str] = None) -> str:
         """
         Eksportuje wyniki skanowania do pliku PDF.
@@ -1625,6 +1788,7 @@ def main():
     parser.add_argument('--no-wifi', action='store_true', help='Pomiń skanowanie WiFi (tylko urządzenia bezpośrednio podłączone)')
     parser.add_argument('--no-siem', action='store_true', help='Wyłącz automatyczny eksport do SIEM (domyślnie włączony)')
     parser.add_argument('--no-threat-intel', action='store_true', help='Wyłącz automatyczne sprawdzanie threat intelligence (domyślnie włączone)')
+    parser.add_argument('--legacy-reports', action='store_true', help='Twórz również stare pliki (scan_*.json, report_*.json) - domyślnie tylko combined_report_*.json')
     
     # Nowe funkcjonalności
     parser.add_argument('--schedule', type=str, help='Zaplanuj skanowanie (np. "daily 09:00", "hourly", "every 30 minutes")')
@@ -1743,8 +1907,16 @@ def main():
                 console.print()  # Pusta linia między protokołami
         
         # Zapisz wyniki
-        scan_file = scanner.save_scan_results()
-        report_files = scanner.generate_report()
+        # Domyślnie tworzymy tylko combined_report_*.json (wszystkie dane w jednym pliku)
+        # Stare pliki (scan_*.json, report_*.json) są tworzone tylko jeśli --legacy-reports
+        if args.legacy_reports:
+            scan_file = scanner.save_scan_results()
+            report_files = scanner.generate_report()
+            console.print("[dim]   Utworzono również stare pliki (scan_*.json, report_*.json) dla kompatybilności wstecznej[/dim]")
+        else:
+            scan_file = ""
+            report_files = {}
+            console.print("[dim]   Tworzę tylko combined_report_*.json (wszystkie dane w jednym pliku)[/dim]")
         
         # Zapisz do historii (jeśli dostępne)
         try:
@@ -1863,27 +2035,26 @@ def main():
                 console.print(f"[red]❌ Błąd monitora: {e}[/red]")
         
         # Automatyczne sprawdzanie Threat Intelligence (jeśli klucz API dostępny)
+        threat_intel_results = {}
         if not args.no_threat_intel:
             try:
                 import threading
+                import queue
+                
+                # Użyj queue do przekazania wyników z wątku
+                threat_queue = queue.Queue()
                 
                 def check_threats():
                     try:
                         results = _check_threat_intelligence(scanner.devices)
+                        threat_queue.put(results)
                         
                         if results:
-                            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-                            output_file = f"threat_intel_{timestamp}.json"
-                            
-                            with open(output_file, 'w', encoding='utf-8') as f:
-                                json.dump(results, f, indent=2, ensure_ascii=False)
-                            
                             threats_found = sum(1 for r in results.values() if r.get('is_threat', False))
                             if threats_found > 0:
                                 console.print(f"[yellow]⚠️  Threat Intelligence: Znaleziono {threats_found} podejrzanych IP![/yellow]")
-                                console.print(f"[dim]   Szczegóły: {output_file}[/dim]")
                     except Exception:
-                        pass
+                        threat_queue.put({})  # Pusta wartość jeśli błąd
                 
                 # Uruchom w tle (nie blokuje)
                 threat_thread = threading.Thread(target=check_threats, daemon=True)
@@ -1893,8 +2064,20 @@ def main():
                 abuseipdb_key = os.getenv("ABUSEIPDB_API_KEY")
                 if not abuseipdb_key:
                     console.print(f"[dim]   💡 Dodaj ABUSEIPDB_API_KEY do .env dla pełnej funkcjonalności[/dim]")
+                
+                # Poczekaj chwilę na zakończenie threat intelligence (max 30 sekund)
+                threat_thread.join(timeout=30)
+                
+                # Pobierz wyniki z queue (jeśli są dostępne)
+                try:
+                    threat_intel_results = threat_queue.get(timeout=1)
+                except queue.Empty:
+                    threat_intel_results = {}  # Brak wyników
             except Exception:
                 pass  # Cicho pomiń jeśli błąd
+        
+        # Generuj kompleksowy raport łączący wszystkie dane
+        combined_report = scanner.generate_combined_report(threat_intel_data=threat_intel_results if threat_intel_results else None)
         
         console.print("[bold green]✅ Skanowanie zakończone![/bold green]\n")
         
@@ -1911,7 +2094,7 @@ def main():
                 
                 # Uruchom serwer w osobnym wątku
                 def run_server():
-                    app.run(host='0.0.0.0', port=args.api_port, debug=False, use_reloader=False)
+                    app.run(host='0.0.0.0', port=args.api_port, debug=False, use_reloader=False, threaded=True)
                 
                 server_thread = threading.Thread(target=run_server, daemon=True)
                 server_thread.start()
@@ -1935,13 +2118,13 @@ def main():
                 console.print(f"[yellow]   Naciśnij Ctrl+C aby zatrzymać ręcznie[/yellow]\n")
                 
                 # Czekaj na zamknięcie przeglądarki (shutdown) lub Ctrl+C
-                # Dodatkowo sprawdzaj czy przeglądarka nadal wysyła heartbeat
+                # Sprawdzaj czy przeglądarka nadal wysyła heartbeat
                 try:
                     import time as time_module
                     
-                    initial_time = time_module.time()
-                    heartbeat_timeout = 5  # Jeśli brak heartbeat przez 5 sekund, zamknij
+                    heartbeat_timeout = 3  # Skrócony timeout - jeśli brak heartbeat przez 3 sekundy, zamknij
                     first_request = True
+                    last_heartbeat_time = time_module.time()
                     
                     while not shutdown_event.is_set():
                         time.sleep(0.5)
@@ -1950,26 +2133,33 @@ def main():
                         current_time = time_module.time()
                         time_since_heartbeat = current_time - last_request_time
                         
-                        # Jeśli był jakiś request, zapamiętaj to
-                        if time_since_heartbeat < 2:
-                            first_request = False
+                        # Jeśli był jakiś request (heartbeat lub normalny), zaktualizuj czas
+                        if time_since_heartbeat < 1.5:
+                            if first_request:
+                                first_request = False
+                            last_heartbeat_time = current_time
                         
                         # Jeśli brak heartbeat przez timeout (i był wcześniej request), zamknij
-                        if not first_request and time_since_heartbeat > heartbeat_timeout:
-                            console.print("\n[dim]🔌 Brak aktywności przeglądarki - zamykam serwer...[/dim]")
-                            shutdown_event.set()
-                            break
+                        if not first_request:
+                            time_since_last_heartbeat = current_time - last_heartbeat_time
+                            if time_since_last_heartbeat > heartbeat_timeout:
+                                console.print("\n[dim]🔌 Wykryto zamknięcie przeglądarki (brak heartbeat) - zamykam serwer...[/dim]")
+                                shutdown_event.set()
+                                break
                     
-                    console.print("\n[dim]🔌 Wykryto zamknięcie przeglądarki - zamykam serwer...[/dim]")
-                    time.sleep(1)  # Daj czas na zamknięcie
+                    console.print("\n[dim]🔌 Zamykam serwer...[/dim]")
+                    time.sleep(0.5)  # Daj czas na zamknięcie
                     console.print("[green]✅ Skanowanie zakończone[/green]")
                 except KeyboardInterrupt:
                     console.print("\n[yellow]⚠️  Zatrzymywanie...[/yellow]")
+                    shutdown_event.set()
                 except Exception as e:
                     console.print(f"\n[yellow]⚠️  Błąd: {e}[/yellow]")
+                    shutdown_event.set()
                 finally:
                     shutdown_event.set()  # Upewnij się że event jest ustawiony
-                    sys.exit(0)
+                    # Wymuś zamknięcie procesu
+                    os._exit(0)
                     
             except ImportError:
                 console.print("[red]❌ Nie można uruchomić API server - Flask nie jest zainstalowany[/red]")

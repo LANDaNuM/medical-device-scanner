@@ -147,15 +147,35 @@ class VirusTotalAPI:
             
             if response.status_code == 200:
                 data = response.json()
+                attributes = data.get('data', {}).get('attributes', {})
+                analysis_stats = attributes.get('last_analysis_stats', {})
+                analysis_results = attributes.get('last_analysis_results', {})
+                
+                # Zbierz szczegóły detekcji (które antywirusy wykryły zagrożenie)
+                detections = []
+                if analysis_results:
+                    for engine_name, result in analysis_results.items():
+                        category = result.get('category', '')
+                        if category in ['malicious', 'suspicious']:
+                            detections.append({
+                                'engine': engine_name,
+                                'category': category,
+                                'result': result.get('result', 'detected'),
+                                'method': result.get('method', '')
+                            })
+                
                 result = {
-                    'reputation': data.get('data', {}).get('attributes', {}).get('reputation', 0),
-                    'harmless': data.get('data', {}).get('attributes', {}).get('last_analysis_stats', {}).get('harmless', 0),
-                    'malicious': data.get('data', {}).get('attributes', {}).get('last_analysis_stats', {}).get('malicious', 0),
-                    'suspicious': data.get('data', {}).get('attributes', {}).get('last_analysis_stats', {}).get('suspicious', 0),
-                    'undetected': data.get('data', {}).get('attributes', {}).get('last_analysis_stats', {}).get('undetected', 0),
-                    'asn': data.get('data', {}).get('attributes', {}).get('asn', None),
-                    'country': data.get('data', {}).get('attributes', {}).get('country', None),
-                    'network': data.get('data', {}).get('attributes', {}).get('network', None),
+                    'reputation': attributes.get('reputation', 0),
+                    'harmless': analysis_stats.get('harmless', 0),
+                    'malicious': analysis_stats.get('malicious', 0),
+                    'suspicious': analysis_stats.get('suspicious', 0),
+                    'undetected': analysis_stats.get('undetected', 0),
+                    'asn': attributes.get('asn', None),
+                    'country': attributes.get('country', None),
+                    'network': attributes.get('network', None),
+                    'detections': detections,  # Szczegóły detekcji
+                    'last_analysis_date': attributes.get('last_analysis_date', None),
+                    'whois': attributes.get('whois', None),
                 }
                 
                 # Zapisz do cache

@@ -71,8 +71,42 @@ reports_dir.mkdir(exist_ok=True)
 app = Flask(__name__) if FLASK_AVAILABLE else None
 
 
+def load_latest_combined_report() -> Optional[Dict]:
+    """Wczytuje najnowszy combined_report (zawiera wszystkie dane)."""
+    combined_files = sorted(list(reports_dir.glob("combined_report_*.json")))
+    if not combined_files:
+        return None
+    
+    latest_file = combined_files[-1]
+    try:
+        with open(latest_file, 'r', encoding='utf-8') as f:
+            combined_data = json.load(f)
+            # Konwertuj combined_report na format kompatybilny z dashboard
+            # combined_report ma strukturę: {scan: {...}, analysis: {...}, threat_intelligence: {...}}
+            # Dashboard oczekuje: {devices: [...], summary: {...}}
+            if 'scan' in combined_data and 'analysis' in combined_data:
+                # Połącz dane z scan i analysis
+                result = {
+                    'devices': combined_data.get('scan', {}).get('devices', []),
+                    'summary': combined_data.get('analysis', {}).get('summary', {}),
+                    'report_timestamp': combined_data.get('report_timestamp'),
+                    'scan_timestamp': combined_data.get('scan', {}).get('scan_timestamp'),
+                    'total_devices': combined_data.get('scan', {}).get('total_devices', 0),
+                    'protocols_scanned': combined_data.get('scan', {}).get('protocols_scanned', []),
+                    'risk_groups': combined_data.get('analysis', {}).get('risk_groups', {}),
+                    'vulnerabilities': combined_data.get('analysis', {}).get('vulnerabilities', {}),
+                    'threat_intelligence': combined_data.get('threat_intelligence', {}),
+                    'threat_intelligence_summary': combined_data.get('threat_intelligence_summary', {})
+                }
+                return result
+            return combined_data
+    except Exception as e:
+        console.print(f"[yellow]⚠️  Błąd wczytywania combined_report: {e}[/yellow]")
+        return None
+
+
 def load_latest_scan() -> Optional[Dict]:
-    """Wczytuje najnowszy skan."""
+    """Wczytuje najnowszy skan (stary format - dla kompatybilności wstecznej)."""
     scan_files = sorted(list(scans_dir.glob("scan_*.json")))
     if not scan_files:
         return None
@@ -86,7 +120,7 @@ def load_latest_scan() -> Optional[Dict]:
 
 
 def load_latest_report() -> Optional[Dict]:
-    """Wczytuje najnowszy raport."""
+    """Wczytuje najnowszy raport (stary format - dla kompatybilności wstecznej)."""
     report_files = sorted(list(reports_dir.glob("report_*.json")))
     if not report_files:
         return None
@@ -99,14 +133,40 @@ def load_latest_report() -> Optional[Dict]:
         return None
 
 
+def load_latest_data() -> Optional[Dict]:
+    """Wczytuje najnowsze dane - najpierw combined_report, potem stare formaty."""
+    # Najpierw spróbuj combined_report (nowy format)
+    data = load_latest_combined_report()
+    if data:
+        return data
+    
+    # Jeśli nie ma, spróbuj starych formatów
+    data = load_latest_report()
+    if data:
+        return data
+    
+    data = load_latest_scan()
+    if data:
+        return data
+    
+    return None
+
+
 def filter_devices(devices: List[Dict], filters: Dict) -> List[Dict]:
     """Filtruje urządzenia na podstawie parametrów."""
     filtered = devices
     
     # Filtruj po protokole
     if 'protocol' in filters:
-        protocol = filters['protocol'].upper()
-        filtered = [d for d in filtered if d.get('protocol', '').upper() == protocol]
+        protocol_filter = filters['protocol'].upper()
+        def protocol_matches(device):
+            device_protocol = device.get('protocol', '')
+            if isinstance(device_protocol, dict):
+                device_protocol = device_protocol.get('value', device_protocol.get('name', ''))
+            elif hasattr(device_protocol, 'value'):
+                device_protocol = device_protocol.value
+            return str(device_protocol).upper() == protocol_filter
+        filtered = [d for d in filtered if protocol_matches(d)]
     
     # Filtruj po security score (min)
     if 'score_min' in filters:
@@ -338,6 +398,7 @@ def render_dashboard_html(devices: List[Dict], summary: Dict, full_data: Dict) -
     <div class="header">
         <div class="nav">
             <a href="/">🏠 Strona główna</a>
+            <a href="/dashboard">📊 Pełny raport</a>
             <a href="/devices">📱 Urządzenia</a>
             <a href="/stats">📈 Statystyki</a>
         </div>
@@ -640,15 +701,40 @@ def render_devices_html(devices: List[Dict], filters: Dict) -> str:
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Urządzenia - Medical Device Scanner</title>
+    {% raw %}
     <script>
         // Automatyczne zamykanie serwera przy zamknięciu przeglądarki
-        window.addEventListener('beforeunload', function() {
+        let heartbeatInterval;
+        
+        // Heartbeat - wysyłaj co sekundę aby pokazać że przeglądarka jest otwarta
+        function startHeartbeat() {
+            heartbeatInterval = setInterval(function() {
+                fetch('/heartbeat', {method: 'GET', keepalive: true}).catch(function() {});
+            }, 1000);
+        }
+        
+        // Zatrzymaj heartbeat i wyślij shutdown przy zamknięciu
+        function stopAndShutdown() {
+            if (heartbeatInterval) {
+                clearInterval(heartbeatInterval);
+            }
+            // Spróbuj wszystkie metody
             navigator.sendBeacon('/shutdown');
-        });
-        window.addEventListener('unload', function() {
-            navigator.sendBeacon('/shutdown');
-        });
+            fetch('/shutdown', {method: 'POST', keepalive: true}).catch(function() {});
+        }
+        
+        window.addEventListener('beforeunload', stopAndShutdown);
+        window.addEventListener('unload', stopAndShutdown);
+        window.addEventListener('pagehide', stopAndShutdown);
+        
+        // Rozpocznij heartbeat po załadowaniu strony
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', startHeartbeat);
+        } else {
+            startHeartbeat();
+        }
     </script>
+    {% endraw %}
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -921,7 +1007,7 @@ if FLASK_AVAILABLE and app:
     
     @app.route('/')
     def index():
-        """Strona główna API - przekierowuje do dashboard jeśli są dane."""
+        """Strona główna API - menu nawigacyjne."""
         # Sprawdź czy klient chce JSON (np. curl, Postman)
         if request.headers.get('Accept', '').startswith('application/json'):
             return jsonify({
@@ -934,13 +1020,11 @@ if FLASK_AVAILABLE and app:
                 }
             })
         
-        # Sprawdź czy są dane - jeśli tak, przekieruj do dashboard
-        data = load_latest_report() or load_latest_scan()
-        if data:
-            from flask import redirect
-            return redirect('/dashboard')
+        # Sprawdź czy są dane
+        data = load_latest_data()
+        has_data = bool(data)
         
-        # Jeśli brak danych, pokaż stronę startową
+        # Pokaż stronę startową z menu nawigacyjnym
         # Dla przeglądarki zwróć HTML
         html_template = """<!DOCTYPE html>
 <html lang="pl">
@@ -948,15 +1032,40 @@ if FLASK_AVAILABLE and app:
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Medical Device Security Scanner API</title>
+    {% raw %}
     <script>
         // Automatyczne zamykanie serwera przy zamknięciu przeglądarki
-        window.addEventListener('beforeunload', function() {
+        let heartbeatInterval;
+        
+        // Heartbeat - wysyłaj co sekundę aby pokazać że przeglądarka jest otwarta
+        function startHeartbeat() {
+            heartbeatInterval = setInterval(function() {
+                fetch('/heartbeat', {method: 'GET', keepalive: true}).catch(function() {});
+            }, 1000);
+        }
+        
+        // Zatrzymaj heartbeat i wyślij shutdown przy zamknięciu
+        function stopAndShutdown() {
+            if (heartbeatInterval) {
+                clearInterval(heartbeatInterval);
+            }
+            // Spróbuj wszystkie metody
             navigator.sendBeacon('/shutdown');
-        });
-        window.addEventListener('unload', function() {
-            navigator.sendBeacon('/shutdown');
-        });
+            fetch('/shutdown', {method: 'POST', keepalive: true}).catch(function() {});
+        }
+        
+        window.addEventListener('beforeunload', stopAndShutdown);
+        window.addEventListener('unload', stopAndShutdown);
+        window.addEventListener('pagehide', stopAndShutdown);
+        
+        // Rozpocznij heartbeat po załadowaniu strony
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', startHeartbeat);
+        } else {
+            startHeartbeat();
+        }
     </script>
+    {% endraw %}
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -1115,14 +1224,44 @@ if FLASK_AVAILABLE and app:
             </div>
             
             <div style="margin-top: 40px; padding-top: 20px; border-top: 1px solid #eee;">
-                <a href="/dashboard" style="display: inline-block; padding: 15px 30px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; text-decoration: none; border-radius: 10px; font-size: 1.1em; font-weight: bold; transition: transform 0.2s;">
-                    📊 Zobacz pełny raport →
-                </a>
+                <h2 style="margin-bottom: 20px;">🚀 Szybka Nawigacja</h2>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
+                    <a href="/dashboard" style="display: block; padding: 20px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; text-decoration: none; border-radius: 10px; text-align: center; font-weight: bold; transition: transform 0.2s;">
+                        📊 Pełny Raport
+                    </a>
+                    <a href="/devices" style="display: block; padding: 20px; background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white; text-decoration: none; border-radius: 10px; text-align: center; font-weight: bold; transition: transform 0.2s;">
+                        📱 Urządzenia
+                    </a>
+                    <a href="/stats" style="display: block; padding: 20px; background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); color: white; text-decoration: none; border-radius: 10px; text-align: center; font-weight: bold; transition: transform 0.2s;">
+                        📈 Statystyki
+                    </a>
+                </div>
             </div>
+            <!-- STATUS_MESSAGE_PLACEHOLDER -->
         </div>
     </div>
 </body>
 </html>"""
+        
+        # Dodaj status danych
+        if has_data:
+            status_message = """
+            <div style="margin-top: 30px; padding: 20px; background: #e8f5e9; border-left: 4px solid #4caf50; border-radius: 8px;">
+                <h3 style="color: #2e7d32; margin-bottom: 10px;">✅ Dane dostępne</h3>
+                <p style="color: #388e3c;">Znaleziono wyniki skanowania. Kliknij powyżej aby zobaczyć szczegóły.</p>
+            </div>
+            """
+        else:
+            status_message = """
+            <div style="margin-top: 30px; padding: 20px; background: #fff3e0; border-left: 4px solid #ff9800; border-radius: 8px;">
+                <h3 style="color: #e65100; margin-bottom: 10px;">⚠️ Brak danych</h3>
+                <p style="color: #f57c00;">Nie znaleziono wyników skanowania. Uruchom skanowanie najpierw:</p>
+                <code style="display: block; margin-top: 10px; padding: 10px; background: #f5f5f5; border-radius: 4px;">python3 src/scanner.py</code>
+            </div>
+            """
+        
+        # Użyj replace zamiast format aby uniknąć problemów z nawiasami klamrowymi w JavaScript
+        html_template = html_template.replace('<!-- STATUS_MESSAGE_PLACEHOLDER -->', status_message)
         return render_template_string(html_template)
     
     @app.route('/devices', methods=['GET'])
@@ -1131,8 +1270,8 @@ if FLASK_AVAILABLE and app:
         # Sprawdź czy klient chce JSON
         wants_json = request.headers.get('Accept', '').startswith('application/json') or request.args.get('format') == 'json'
         
-        # Wczytaj najnowszy raport lub skan
-        data = load_latest_report() or load_latest_scan()
+        # Wczytaj najnowsze dane
+        data = load_latest_data()
         if not data:
             if wants_json:
                 return json_response({'error': 'No data available'}, pretty=True), 404
@@ -1163,7 +1302,7 @@ if FLASK_AVAILABLE and app:
     @app.route('/devices/<mac>', methods=['GET'])
     def get_device(mac: str):
         """Pobiera szczegóły urządzenia po MAC address."""
-        data = load_latest_report() or load_latest_scan()
+        data = load_latest_data()
         if not data:
             pretty = request.args.get('pretty', 'false').lower() == 'true'
             return json_response({'error': 'No data available'}, pretty=pretty), 404
@@ -1231,7 +1370,7 @@ if FLASK_AVAILABLE and app:
     @app.route('/dashboard', methods=['GET'])
     def dashboard():
         """Pełny graficzny dashboard z raportem."""
-        data = load_latest_report() or load_latest_scan()
+        data = load_latest_data()
         if not data:
             return render_template_string("""
                 <html><head><title>Brak danych</title></head>
@@ -1253,7 +1392,7 @@ if FLASK_AVAILABLE and app:
         """Pobiera statystyki - HTML dla przeglądarki."""
         wants_json = request.headers.get('Accept', '').startswith('application/json') or request.args.get('format') == 'json'
         
-        data = load_latest_report() or load_latest_scan()
+        data = load_latest_data()
         if not data:
             if wants_json:
                 return jsonify({'error': 'No data available'}), 404
@@ -1275,9 +1414,14 @@ if FLASK_AVAILABLE and app:
         encryption_strength = {'strong': 0, 'moderate': 0, 'weak': 0, 'none': 0}
         
         for device in devices:
-            # Po protokole
+            # Po protokole (może być obiekt lub string)
             protocol = device.get('protocol', 'unknown')
-            by_protocol[protocol] = by_protocol.get(protocol, 0) + 1
+            if isinstance(protocol, dict):
+                protocol = protocol.get('value', protocol.get('name', 'unknown'))
+            elif hasattr(protocol, 'value'):
+                protocol = protocol.value
+            protocol_str = str(protocol).upper() if protocol else 'UNKNOWN'
+            by_protocol[protocol_str] = by_protocol.get(protocol_str, 0) + 1
             
             # Po szyfrowaniu
             if device.get('has_encryption', False):
