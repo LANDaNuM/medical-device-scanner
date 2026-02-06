@@ -8,6 +8,8 @@ Użycie:
   3. Na Pi: python scripts/esp32_serial_reader.py --out wyniki_esp32.json --enrich
 
 Opcje: --port, --baud, --out, --enrich
+       --duration N       skanuj N sekund i zakończ (raport w --out); do cron/at
+       --report-email ADR po zakończeniu (np. z --duration) wyślij raport emailem (SMTP z .env)
        --on-new-scan      przy event new (BLE) uruchom skaner: python src/scanner.py --ble (co najwyżej co 60 s)
        --alert-email ADR  wyślij mail przy nowym urządzeniu (SMTP z .env)
        --alert-slack URL  wyślij POST do Slack webhook przy nowym urządzeniu
@@ -157,11 +159,50 @@ def _alert_splunk(filepath, line):
         pass
 
 
+def _send_report_email(addr, filepath, env):
+    """Wysyła raport (zawartość pliku) emailem po zakończeniu skanowania (--duration)."""
+    try:
+        import smtplib
+        from email.mime.text import MIMEText
+        from email.mime.multipart import MIMEMultipart
+    except ImportError:
+        return
+    smtp = env.get("SMTP_SERVER") or env.get("SMTP_HOST")
+    port = int(env.get("SMTP_PORT", 587))
+    user = env.get("SMTP_USER")
+    password = env.get("SMTP_PASSWORD")
+    from_addr = env.get("EMAIL_FROM") or user
+    if not smtp or not user or not password or not addr:
+        print("  [report] Brak SMTP_SERVER/SMTP_USER/SMTP_PASSWORD lub adresu. Sprawdź .env", file=sys.stderr)
+        return
+    try:
+        with open(filepath, "r", encoding="utf-8") as f:
+            body = f.read()
+    except Exception as e:
+        print(f"  [report] Nie można odczytać pliku raportu: {e}", file=sys.stderr)
+        return
+    msg = MIMEMultipart()
+    msg["Subject"] = f"[ESP32] Raport skanowania {os.path.basename(filepath)}"
+    msg["From"] = from_addr
+    msg["To"] = addr
+    msg.attach(MIMEText(body, "plain", "utf-8"))
+    try:
+        with smtplib.SMTP(smtp, port) as server:
+            server.starttls()
+            server.login(user, password)
+            server.sendmail(from_addr, addr, msg.as_string())
+        print("  [report] Raport wysłany emailem.", file=sys.stderr)
+    except Exception as e:
+        print(f"  [report] Błąd SMTP (sprawdź .env, token Proton, sieć): {e}", file=sys.stderr)
+
+
 def main():
     parser = argparse.ArgumentParser(description="Czytaj dane z ESP32 przez USB (Serial)")
     parser.add_argument("--port", default=None, help="Port, np. /dev/ttyUSB0 lub /dev/ttyACM0")
     parser.add_argument("--baud", type=int, default=115200, help="Prędkość (domyślnie 115200)")
     parser.add_argument("--out", default=None, help="Zapisuj linie do pliku (np. esp32_scan.json)")
+    parser.add_argument("--duration", type=int, default=None, metavar="N", help="Skanuj N sekund i zakończ (raport w --out); do cron/at")
+    parser.add_argument("--report-email", metavar="ADR", default=None, help="Po zakończeniu (np. z --duration) wyślij raport emailem (SMTP z .env)")
     parser.add_argument("--enrich", action="store_true", help="Dodaj OUI (producent), typ urządzenia, podpowiedzi podatności")
     parser.add_argument("--on-new-scan", action="store_true", help="Przy event new (BLE) uruchom skaner --ble (co najwyżej co 60 s)")
     parser.add_argument("--alert-email", metavar="ADR", default=None, help="Wyślij email przy nowym urządzeniu (SMTP z .env)")
@@ -218,8 +259,14 @@ def main():
         sys.exit(1)
 
     out_file = open(args.out, "w") if args.out else None
+    start_time = time.time()
+    duration_reached = False
     try:
         while True:
+            if args.duration is not None and (time.time() - start_time) >= args.duration:
+                duration_reached = True
+                print(f"\n[OK] Koniec skanowania po {args.duration} s. Raport: {args.out or '(stdout)'}", file=sys.stderr)
+                break
             line = ser.readline()
             if not line:
                 continue
@@ -265,6 +312,8 @@ def main():
         ser.close()
         if out_file:
             out_file.close()
+        if duration_reached and args.report_email and args.out and os.path.isfile(args.out):
+            _send_report_email(args.report_email, args.out, env)
 
 
 if __name__ == "__main__":
