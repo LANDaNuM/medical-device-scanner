@@ -83,3 +83,22 @@ mkdir -p /home/erno_jajo/medical-device-scanner-main/raporty
 - W Proton: domena własna dodana, adres na domenie utworzony, **token SMTP** wygenerowany i wklejony do `.env` jako `SMTP_PASSWORD`.
 
 Pełna lista flag skryptu: [FLAGI.md – Mikrokontroler (ESP32)](FLAGI.md#-mikrokontroler-esp32).
+
+---
+
+## 7. Cron dla audytu (scanner.py --audit) + raport e-mail
+
+Możesz zaplanować **pełny audyt** (testy podatności, skan portów) tak samo jak ESP32 – jedna linia w crontab. Raport zapisuje się w `exports/combined_report_*.json` i **można go wysłać emailem** flagą `--report-email` (ta sama konfiguracja SMTP w `.env` co dla ESP32).
+
+**Przykład – codziennie o 3:00, raport na maila (zamień ścieżkę i adres):**
+```cron
+0 3 * * * cd /home/erno_jajo/medical-device-scanner-main && ./venv/bin/python src/scanner.py --audit --report-email twoj@email.me 2>&1 | logger -t scanner-audit
+```
+
+**Raz w tygodniu (niedziela 3:00) z mailem:**
+```cron
+0 3 * * 0 cd /home/erno_jajo/medical-device-scanner-main && ./venv/bin/python src/scanner.py --audit --report-email twoj@email.me 2>&1 | logger -t scanner-audit
+```
+
+Test ręczny: `cd /ścieżka/do/projektu && ./venv/bin/python src/scanner.py --audit --report-email twoj@email.me`  
+Więcej flag: [FLAGI_NAJCZESCIEJ_UZYWANE.md](FLAGI_NAJCZESCIEJ_UZYWANE.md).
