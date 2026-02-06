@@ -179,7 +179,9 @@ Odbiornik danych z ESP32 podłączonego do Raspberry Pi przez USB (port szeregow
 | `--port PORT` | Port szeregowy, np. `/dev/ttyUSB0` lub `/dev/ttyACM0` (domyślnie: auto – szuka ttyUSB0, ttyACM0, serial0) |
 | `--baud BAUD` | Prędkość portu w bodach (domyślnie: 115200) |
 | `--out PLIK` | Zapisuj każdą linię do pliku (np. `wyniki_esp32.json`) – plik jest **nadpisywany** przy każdym uruchomieniu |
-| `--enrich` | Wzbogacanie: producent (OUI), typ urządzenia z UUID, podpowiedzi podatności (`ble_bez_parowania`, `możliwe_urządzenie_medyczne`) |
+| `--duration N` | Skanuj **N sekund** i zakończ (raport w `--out`); do użycia z **cron** lub **at** (zaplanowane skanowanie) |
+| `--report-email ADR` | Po zakończeniu (np. z `--duration`) wyślij **raport** (zawartość pliku) emailem (SMTP z `.env`) |
+| `--enrich` | Wzbogacanie: **BLE** – producent (OUI), typ z UUID, podpowiedź z manufacturer_data (np. Apple 4c00), podatności; **WiFi** – producent AP (OUI z BSSID), jeśli ESP32 wysyła `bssid` (wymaga zaktualizowanego firmware) |
 | `--on-new-scan` | Przy zdarzeniu **new** (BLE) uruchom skaner: `python src/scanner.py --ble` (co najwyżej co 60 s) |
 | `--alert-email ADR` | Wyślij email przy **nowym urządzeniu** (SMTP z `.env`: SMTP_SERVER, SMTP_USER, SMTP_PASSWORD) |
 | `--alert-slack URL` | Wyślij POST do **Slack Incoming Webhook** przy nowym urządzeniu |
@@ -204,7 +206,33 @@ python3 scripts/esp32_serial_reader.py --out wyniki_esp32.json --alert-slack htt
 
 # Dopisanie do pliku dla Splunk
 python3 scripts/esp32_serial_reader.py --out wyniki_esp32.json --alert-splunk /var/log/splunk_esp32.jsonl
+
+# Zaplanowane skanowanie: 5 minut, raport do pliku (do użycia z cron/at)
+python3 scripts/esp32_serial_reader.py --out raport_esp32.json --enrich --duration 300
+
+# Jak wyżej + wyślij raport emailem po zakończeniu
+python3 scripts/esp32_serial_reader.py --out raport_esp32.json --enrich --duration 300 --report-email admin@example.com
 ```
+
+**Zaplanowane skanowanie ESP32 (np. jutro 8:00) i raport**
+
+📌 **Wszystko w jednym miejscu (cron + konfiguracja Proton):** [CRON_PROTON_ESP32.md](CRON_PROTON_ESP32.md)
+
+Na Raspberry Pi (ESP32 podłączony przez USB, Pi pod zasilaniem i LAN):
+
+1. **Jednorazowo jutro o 8:00** (wymaga `at`; na Pi: `sudo apt install at`):
+   ```bash
+   echo 'cd /ścieżka/do/medical-device-scanner-main && python3 scripts/esp32_serial_reader.py --out raport_$(date +%Y%m%d_%H%M).json --enrich --duration 300 --report-email twoj@email.com' | at 08:00 tomorrow
+   ```
+   Zamień `/ścieżka/do/medical-device-scanner-main` i `twoj@email.com`. Zamiast `08:00 tomorrow` możesz podać np. `08:00 28.01.2026`. Raport będzie w pliku w katalogu projektu i (jeśli skonfigurowany SMTP w `.env`) zostanie wysłany emailem.
+
+2. **Codziennie o 8:00** (cron):
+   ```bash
+   crontab -e
+   # dodaj linię (zamień /ścieżka i twoj@email.com):
+   0 8 * * * cd /ścieżka/do/medical-device-scanner-main && python3 scripts/esp32_serial_reader.py --out /ścieżka/raporty/esp32_$(date +\%Y\%m\%d).json --enrich --duration 300 --report-email twoj@email.com
+   ```
+   Raporty: plik w katalogu raportów + email (jeśli SMTP w `.env`).
 
 **Uwaga:** Przed wgrywaniem nowego firmware na ESP32 (Arduino IDE lub esptool) zatrzymaj skrypt (Ctrl+C), żeby port nie był zajęty.
 

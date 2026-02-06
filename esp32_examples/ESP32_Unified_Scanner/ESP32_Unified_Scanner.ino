@@ -126,10 +126,26 @@ void loop() {
     if (ssid.length() == 0) continue;
     curWifiSsids[curWifi++] = ssid;
     if (!inList(lastWifi, nLastWifi, ssid)) {
-      char buf[360];
-      snprintf(buf, sizeof(buf),
-               "{\"type\":\"wifi\",\"event\":\"new\",\"ssid\":\"%s\",\"rssi\":%d,\"channel\":%d}",
-               ssid.c_str(), WiFi.RSSI(i), WiFi.channel(i));
+      char buf[400];
+      String bssidStr = WiFi.BSSIDstr(i);
+      if (bssidStr.length() < 17) {
+        const uint8_t* bssid = WiFi.BSSID(i);
+        if (bssid) {
+          char mac[18];
+          snprintf(mac, sizeof(mac), "%02x:%02x:%02x:%02x:%02x:%02x",
+                   bssid[0], bssid[1], bssid[2], bssid[3], bssid[4], bssid[5]);
+          bssidStr = String(mac);
+        }
+      }
+      if (bssidStr.length() >= 17) {
+        snprintf(buf, sizeof(buf),
+                 "{\"type\":\"wifi\",\"event\":\"new\",\"ssid\":\"%s\",\"bssid\":\"%s\",\"rssi\":%d,\"channel\":%d}",
+                 ssid.c_str(), bssidStr.c_str(), WiFi.RSSI(i), WiFi.channel(i));
+      } else {
+        snprintf(buf, sizeof(buf),
+                 "{\"type\":\"wifi\",\"event\":\"new\",\"ssid\":\"%s\",\"rssi\":%d,\"channel\":%d}",
+                 ssid.c_str(), WiFi.RSSI(i), WiFi.channel(i));
+      }
       Serial.println(buf);
     }
   }

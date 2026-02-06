@@ -417,6 +417,9 @@ pip install pyserial
 - **ESP32:** wgraj `esp32_examples/ESP32_Unified_Scanner` – skanuje BLE i WiFi, wysyła **tylko zmiany** (event: `new` / `gone`) + co ~60 s `heartbeat`. Dzięki temu sens ma działanie 24/7 – nie zalewasz logów tym samym.
 - **Raspberry Pi:** `python scripts/esp32_serial_reader.py --out wyniki_esp32.json --enrich`. Wymaga: `pip install pyserial`.
 
+**Zaplanowane skanowanie (np. jutro 8:00) i raport:**  
+Żeby **zaplanować skan przez ESP32** (np. jutro o 8:00) i **dostać raport** (plik + opcjonalnie email), użyj na Pi flag `--duration N` (skan N sekund, potem zapis raportu) i `--report-email ADR`. Jednorazowo: `at 08:00 tomorrow` z poleceniem uruchamiającym czytnik z `--duration 300 --out raport.json --report-email twoj@email.com`. Codziennie o 8:00: wpis w **cron** (`0 8 * * *`). Pełny opis i przykłady: **[FLAGI.md – sekcja Mikrokontroler (ESP32) i „Zaplanowane skanowanie ESP32”](FLAGI.md#-mikrokontroler-esp32)**.
+
 #### Opcja B: UART przez GPIO (bez USB)
 
 - **Podłączenie (3.3 V – nie łączyć z 5 V):**

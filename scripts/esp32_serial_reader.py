@@ -44,6 +44,17 @@ BLE_SERVICE_HINTS = {
     "0000fe95": "xiaomi",
 }
 
+# Prefiksy BLE manufacturer_data (pierwsze 2 bajty = Company ID, hex) → podpowiedź producenta
+BLE_MANUFACTURER_HINTS = {
+    "4c00": "Apple (np. AirTag, AirPods, Find My)",
+    "5900": "Google",
+    "6d00": "Microsoft",
+    "e000": "Garmin",
+    "7500": "Samsung (część urządzeń)",
+    "fe95": "Xiaomi (Mi)",
+    "fd6f": "Fast Pair",
+}
+
 
 def _enrich_ble(oui_lookup, j):
     """Dodaje vendor (OUI), device_type_hint, vulnerability_hints do rekordu BLE."""
@@ -68,6 +79,11 @@ def _enrich_ble(oui_lookup, j):
     if service_uuid and service_uuid in BLE_SERVICE_HINTS:
         out["device_type_hint"] = BLE_SERVICE_HINTS[service_uuid]
 
+    # Producent z manufacturer_data (prefiks 2 bajty = Company ID)
+    mfg = (j.get("manufacturer_data") or "").lower().replace(" ", "")[:4]
+    if mfg in BLE_MANUFACTURER_HINTS:
+        out["manufacturer_hint"] = BLE_MANUFACTURER_HINTS[mfg]
+
     # Podpowiedzi podatności (tylko sensowne – bez „brak_nazwy”)
     hints = []
     if j.get("ble_no_auth") is True:
@@ -77,6 +93,25 @@ def _enrich_ble(oui_lookup, j):
     if hints:
         out["vulnerability_hints"] = hints
 
+    return out
+
+
+def _enrich_wifi(oui_lookup, j):
+    """Dodaje vendor (OUI) dla punktu dostępowego WiFi, gdy jest bssid (MAC AP)."""
+    if j.get("type") != "wifi":
+        return j
+    bssid = j.get("bssid") or j.get("mac") or ""
+    if not bssid:
+        return j
+    out = dict(j)
+    try:
+        if PROJECT_ROOT not in sys.path:
+            sys.path.insert(0, PROJECT_ROOT)
+        vendor = oui_lookup.lookup(bssid)
+        if vendor:
+            out["ap_vendor"] = vendor
+    except Exception:
+        pass
     return out
 
 
@@ -181,6 +216,9 @@ def _send_report_email(addr, filepath, env):
     except Exception as e:
         print(f"  [report] Nie można odczytać pliku raportu: {e}", file=sys.stderr)
         return
+    if not body or not body.strip():
+        body = "(Raport pusty – brak danych z ESP32 w tym oknie. Sprawdź: ESP32 podłączony USB do Pi, port np. /dev/ttyUSB0, dłuższy --duration.)"
+        print("  [report] Plik raportu pusty – wysyłam mail z informacją.", file=sys.stderr)
     msg = MIMEMultipart()
     msg["Subject"] = f"[ESP32] Raport skanowania {os.path.basename(filepath)}"
     msg["From"] = from_addr
@@ -297,9 +335,13 @@ def main():
                         _alert_slack(args.alert_slack, body)
                     if args.alert_splunk:
                         _alert_splunk(args.alert_splunk, s)
-                if args.enrich and oui_lookup and j.get("type") == "ble":
-                    enriched = _enrich_ble(oui_lookup, j)
-                    s = json.dumps(enriched, ensure_ascii=False)
+                if args.enrich and oui_lookup:
+                    if j.get("type") == "ble":
+                        enriched = _enrich_ble(oui_lookup, j)
+                        s = json.dumps(enriched, ensure_ascii=False)
+                    elif j.get("type") == "wifi":
+                        enriched = _enrich_wifi(oui_lookup, j)
+                        s = json.dumps(enriched, ensure_ascii=False)
             except json.JSONDecodeError:
                 pass
             print(s)
