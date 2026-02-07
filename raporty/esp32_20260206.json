@@ -1,0 +1,40 @@
+{"type":"wifi","event":"new","ssid":"Wiatrakowa26/28_2.4G","bssid":"5c:e9:31:21:25:90","rssi":-92,"channel":2}
+{"type":"wifi","event":"gone","ssid":"shutterBox-36987af2cfbe"}
+{"type": "ble", "event": "new", "mac": "ea:8a:5e:99:f0:ed", "name": "(unknown)", "rssi": -87, "manufacturer_data": "4c0012020000"}
+{"type": "ble", "event": "gone", "mac": "fc:6a:bd:85:92:a5"}
+{"type":"wifi","event":"new","ssid":"shutterBox-36987af2cfbe","bssid":"36:98:7a:f2:cf:be","rssi":-68,"channel":7}
+{"type":"wifi","event":"new","ssid":"uplink_2.4G","bssid":"78:88:8a:00:bc:0c","rssi":-93,"channel":10}
+{"type":"wifi","event":"gone","ssid":"shutterBox-36987af22f72"}
+{"type":"wifi","event":"gone","ssid":"Skurwiaj"}
+{"type":"wifi","event":"new","ssid":"shutterBox-36987af22f72","bssid":"36:98:7a:f2:2f:72","rssi":-81,"channel":1}
+{"type":"wifi","event":"gone","ssid":"uplink_2.4G"}
+{"type":"wifi","event":"new","ssid":"Skurwiaj","bssid":"bc:76:5e:e9:43:62","rssi":-93,"channel":6}
+{"type":"wifi","event":"gone","ssid":"Wiatrakowa26/28_2.4G"}
+{"type":"wifi","event":"gone","ssid":"Skurwiaj"}
+{"type": "ble", "event": "new", "mac": "74:b1:9c:4f:4a:a3", "name": "(unknown)", "rssi": -98, "manufacturer_data": "4c001005731ccf152f"}
+{"type":"wifi","event":"new","ssid":"Skurwiaj","bssid":"bc:76:5e:e9:43:62","rssi":-92,"channel":6}
+{"type":"wifi","event":"new","ssid":"uplink_2.4G","bssid":"78:88:8a:00:bc:0c","rssi":-95,"channel":10}
+{"type":"heartbeat","ble_count":6,"wifi_count":12}
+{"type":"wifi","event":"new","ssid":"Wiatrakowa26/28_2.4G","bssid":"5c:e9:31:21:25:90","rssi":-94,"channel":2}
+{"type":"wifi","event":"gone","ssid":"shutterBox-36987af2d77c"}
+{"type":"wifi","event":"gone","ssid":"Skurwiaj"}
+{"type":"wifi","event":"gone","ssid":"uplink_2.4G"}
+{"type":"wifi","event":"gone","ssid":"Pulutek"}
+{"type": "ble", "event": "gone", "mac": "74:b1:9c:4f:4a:a3"}
+{"type": "ble", "event": "gone", "mac": "e9:60:92:0f:72:a4"}
+{"type":"wifi","event":"new","ssid":"shutterBox-36987af2d77c","bssid":"36:98:7a:f2:d7:7c","rssi":-92,"channel":1}
+{"type": "ble", "event": "new", "mac": "e9:60:92:0f:72:a4", "name": "(unknown)", "rssi": -92, "manufacturer_data": "4c0012020002"}
+{"type":"wifi","event":"new","ssid":"Skurwiaj","bssid":"bc:76:5e:e9:43:62","rssi":-93,"channel":6}
+{"type":"wifi","event":"new","ssid":"TP-Link_5140","bssid":"a4:2b:b0:25:51:40","rssi":-93,"channel":8}
+{"type":"wifi","event":"new","ssid":"uplink_2.4G","bssid":"78:88:8a:00:bc:0c","rssi":-94,"channel":10}
+{"type":"wifi","event":"gone","ssid":"Wiatrakowa26/28_2.4G"}
+{"type":"wifi","event":"gone","ssid":"TP-Link_5140"}
+{"type":"wifi","event":"new","ssid":"Pulutek","bssid":"b0:6e:bf:98:69:d8","rssi":-95,"channel":13}
+{"type":"wifi","event":"gone","ssid":"uplink_2.4G"}
+{"type":"wifi","event":"new","ssid":"Wiatrakowa26/28_2.4G","bssid":"5c:e9:31:21:25:90","rssi":-97,"channel":2}
+{"type":"wifi","event":"gone","ssid":"Skurwiaj"}
+{"type":"wifi","event":"gone","ssid":"Pulutek"}
+{"type":"heartbeat","ble_count":5,"wifi_count":10}
+{"type":"wifi","event":"new","ssid":"Skurwiaj","bssid":"bc:76:5e:e9:43:62","rssi":-93,"channel":6}
+{"type":"wifi","event":"new","ssid":"TP-Link_5140","bssid":"a4:2b:b0:25:51:40","rssi":-95,"channel":8}
+{"type":"wifi","event":"new","ssid":"Pulutek","bssid":"b0:6e:bf:98:69:d8","rssi":-95,"channel":13}

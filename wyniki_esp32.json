@@ -1,0 +1,360 @@
+{"type":"wifi","event":"new","ssid":"TP-Link_1478","rssi":-92,"channel":5}
+{"type":"wifi","event":"new","ssid":"HP-Print-E6-Deskjet 3540 series","rssi":-92,"channel":11}
+{"type":"wifi","event":"gone","ssid":"Pulutek"}
+{"type":"wifi","event":"gone","ssid":"Magda_2.4G"}
+{"type": "ble", "event": "new", "mac": "e4:0f:31:a5:bc:a8", "name": "RNCF16", "rssi": -97}
+{"type":"wifi","event":"new","ssid":"TP-Link_0C9C","rssi":-83,"channel":7}
+{"type":"wifi","event":"new","ssid":"Wiatrakowa26/28_2.4G","rssi":-88,"channel":2}
+{"type":"wifi","event":"gone","ssid":"TP-Link_1478"}
+{"type":"wifi","event":"gone","ssid":"HP-Print-E6-Deskjet 3540 series"}
+{"type":"wifi","event":"new","ssid":"Magda_2.4G","rssi":-90,"channel":1}
+{"type":"wifi","event":"gone","ssid":"TP-Link_0C9C"}
+{"type":"heartbeat","ble_count":8,"wifi_count":15}
+{"type": "ble", "event": "new", "mac": "de:37:f1:71:7d:ef", "name": "(unknown)", "rssi": -103, "manufacturer_data": "4c0012020001"}
+{"type": "ble", "event": "gone", "mac": "de:54:fa:96:76:c3"}
+{"type": "ble", "event": "gone", "mac": "e4:0f:31:a5:bc:a8"}
+{"type":"wifi","event":"new","ssid":"Pulutek","rssi":-84,"channel":13}
+{"type":"wifi","event":"new","ssid":"TP-Link_1478","rssi":-89,"channel":5}
+{"type":"wifi","event":"gone","ssid":"shutterBox-36987af22ef6"}
+{"type":"wifi","event":"gone","ssid":"Wiatrakowa26/28_2.4G"}
+{"type": "ble", "event": "new", "mac": "23:09:35:16:84:12", "name": "(unknown)", "rssi": -92}
+{"type": "ble", "event": "new", "mac": "7c:01:a1:2f:39:58", "name": "(unknown)", "rssi": -100, "manufacturer_data": "4c001006391e58497106"}
+{"type": "ble", "event": "new", "mac": "e4:0f:31:a5:bc:a8", "name": "RNCF16", "rssi": -98}
+{"type": "ble", "event": "gone", "mac": "09:24:97:b9:6d:4f"}
+{"type":"wifi","event":"new","ssid":"TP-Link_0C9C","rssi":-82,"channel":7}
+{"type":"wifi","event":"new","ssid":"shutterBox-36987af22ef6","rssi":-90,"channel":1}
+{"type":"wifi","event":"gone","ssid":"TP-Link_1478"}
+{"type":"wifi","event":"gone","ssid":"Magda_2.4G"}
+{"type": "ble", "event": "new", "mac": "5c:74:9b:29:21:c1", "name": "(unknown)", "rssi": -86, "manufacturer_data": "4c001006351e5978c7f7"}
+{"type": "ble", "event": "new", "mac": "67:84:48:58:de:06", "name": "(unknown)", "rssi": -98, "manufacturer_data": "4c0010062c1ea33cb6bc"}
+{"type": "ble", "event": "new", "mac": "b4:3a:31:89:d0:a1", "name": "PR BT #53409", "rssi": -96, "vendor": "Silicon Laboratories"}
+{"type": "ble", "event": "new", "mac": "de:54:fa:96:76:c3", "name": "(unknown)", "rssi": -98, "manufacturer_data": "4c0012020001"}
+{"type": "ble", "event": "new", "mac": "f6:3e:47:dc:56:e8", "name": "(unknown)", "rssi": -93, "manufacturer_data": "4c0012020000"}
+{"type": "ble", "event": "gone", "mac": "a6:d7:3c:dd:05:13"}
+{"type": "ble", "event": "gone", "mac": "e4:0f:31:a5:bc:a8"}
+{"type":"wifi","event":"new","ssid":"Wiatrakowa26/28_2.4G","rssi":-88,"channel":2}
+{"type":"wifi","event":"new","ssid":"Wiatrakowa_28_5","rssi":-91,"channel":1}
+{"type":"wifi","event":"new","ssid":"DIR-825-4be6","rssi":-91,"channel":13}
+{"type":"wifi","event":"gone","ssid":"shutterBox-36987af22f72"}
+{"type":"wifi","event":"gone","ssid":"DIRECT-oC-EPSON-L3560 Series"}
+{"type":"wifi","event":"gone","ssid":"HH71V1_0E69_2.4G"}
+{"type": "ble", "event": "new", "mac": "e4:0f:31:a5:bc:a8", "name": "RNCF16", "rssi": -92}
+{"type": "ble", "event": "gone", "mac": "67:84:48:58:de:06"}
+{"type": "ble", "event": "gone", "mac": "6c:11:31:e0:91:88"}
+{"type": "ble", "event": "gone", "mac": "b4:3a:31:89:d0:a1", "vendor": "Silicon Laboratories"}
+{"type": "ble", "event": "gone", "mac": "de:37:f1:71:7d:ef"}
+{"type": "ble", "event": "gone", "mac": "f6:3e:47:dc:56:e8"}
+{"type":"wifi","event":"new","ssid":"shutterBox-36987af22f72","rssi":-76,"channel":1}
+{"type":"wifi","event":"new","ssid":"Magda_2.4G","rssi":-91,"channel":1}
+{"type":"wifi","event":"gone","ssid":"Wiatrakowa_28_5"}
+{"type":"wifi","event":"gone","ssid":"Pulutek"}
+{"type": "ble", "event": "gone", "mac": "e4:0f:31:a5:bc:a8"}
+{"type":"wifi","event":"new","ssid":"Pulutek","rssi":-89,"channel":13}
+{"type":"wifi","event":"new","ssid":"HH71V1_0E69_2.4G","rssi":-90,"channel":1}
+{"type":"wifi","event":"gone","ssid":"DIR-825-4be6"}
+{"type":"wifi","event":"gone","ssid":"Magda_2.4G"}
+{"type": "ble", "event": "new", "mac": "e4:0f:31:a5:bc:a8", "name": "RNCF16", "rssi": -92}
+{"type": "ble", "event": "gone", "mac": "7c:01:a1:2f:39:58"}
+{"type":"wifi","event":"new","ssid":"TP-Link_5140","rssi":-88,"channel":8}
+{"type":"wifi","event":"new","ssid":"Magda_2.4G","rssi":-91,"channel":1}
+{"type":"wifi","event":"new","ssid":"Markiza mała ","rssi":-92,"channel":1}
+{"type":"wifi","event":"gone","ssid":"Wiatrakowa26/28_2.4G"}
+{"type":"wifi","event":"gone","ssid":"TP-Link_0C9C"}
+{"type":"wifi","event":"gone","ssid":"Pulutek"}
+{"type":"heartbeat","ble_count":7,"wifi_count":15}
+{"type": "ble", "event": "new", "mac": "4e:47:4c:b7:87:83", "name": "(unknown)", "rssi": -98, "manufacturer_data": "4c001005099847e0d3"}
+{"type": "ble", "event": "new", "mac": "52:ae:d6:6a:df:c2", "name": "(unknown)", "rssi": -99, "manufacturer_data": "4c001006311ecd2d1dc2"}
+{"type": "ble", "event": "new", "mac": "ee:d5:e4:30:af:72", "name": "(unknown)", "rssi": -96, "manufacturer_data": "4c0012020003"}
+{"type": "ble", "event": "gone", "mac": "de:54:fa:96:76:c3"}
+{"type": "ble", "event": "gone", "mac": "f5:39:31:8b:b2:9d"}
+{"type":"wifi","event":"new","ssid":"Wiatrakowa26/28_2.4G","rssi":-81,"channel":2}
+{"type":"wifi","event":"new","ssid":"TP-Link_0C9C","rssi":-88,"channel":7}
+{"type":"wifi","event":"new","ssid":"Pulutek","rssi":-89,"channel":13}
+{"type":"wifi","event":"new","ssid":"TP-Link_83E0","rssi":-90,"channel":1}
+{"type":"wifi","event":"gone","ssid":"shutterBox-36987af2d59a"}
+{"type":"wifi","event":"gone","ssid":"TP-Link_5140"}
+{"type":"wifi","event":"gone","ssid":"Magda_2.4G"}
+{"type":"wifi","event":"gone","ssid":"Markiza mała "}
+{"type": "ble", "event": "new", "mac": "de:54:fa:96:76:c3", "name": "(unknown)", "rssi": -98, "manufacturer_data": "4c0012020001"}
+{"type":"wifi","event":"new","ssid":"shutterBox-36987af2d59a","rssi":-64,"channel":11}
+{"type":"wifi","event":"new","ssid":"Markiza mała ","rssi":-90,"channel":1}
+{"type":"wifi","event":"new","ssid":"DIR-825-4be6","rssi":-91,"channel":13}
+{"type":"wifi","event":"gone","ssid":"Wiatrakowa26/28_2.4G"}
+{"type":"wifi","event":"gone","ssid":"TP-Link_0C9C"}
+{"type":"wifi","event":"gone","ssid":"HH71V1_0E69_2.4G"}
+{"type": "ble", "event": "new", "mac": "77:29:86:02:87:d0", "name": "(unknown)", "rssi": -90, "manufacturer_data": "4c001005391825e68a"}
+{"type": "ble", "event": "new", "mac": "a2:b9:bd:e2:51:c1", "name": "(unknown)", "rssi": -101, "service_uuid": "0000a032-0000-1000-8000-00805f9b34fb"}
+{"type": "ble", "event": "new", "mac": "c3:0d:65:c5:0d:cf", "name": "(unknown)", "rssi": -91, "manufacturer_data": "4c0012020001"}
+{"type": "ble", "event": "gone", "mac": "4e:47:4c:b7:87:83"}
+{"type": "ble", "event": "gone", "mac": "52:ae:d6:6a:df:c2"}
+{"type": "ble", "event": "gone", "mac": "67:76:69:bc:4d:d8"}
+{"type": "ble", "event": "gone", "mac": "dd:79:33:ac:3a:e8"}
+{"type":"wifi","event":"new","ssid":"Wiatrakowa26/28_2.4G","rssi":-80,"channel":2}
+{"type":"wifi","event":"new","ssid":"HH71V1_0E69_2.4G","rssi":-89,"channel":1}
+{"type":"wifi","event":"new","ssid":"wiatrakowa","rssi":-91,"channel":10}
+{"type":"wifi","event":"gone","ssid":"Pulutek"}
+{"type":"wifi","event":"gone","ssid":"NT_parter"}
+{"type":"wifi","event":"gone","ssid":"TP-Link_83E0"}
+{"type": "ble", "event": "new", "mac": "49:e4:fb:2b:26:29", "name": "(unknown)", "rssi": -96, "manufacturer_data": "4c001006051939eaf978"}
+{"type": "ble", "event": "gone", "mac": "a2:b9:bd:e2:51:c1"}
+{"type": "ble", "event": "gone", "mac": "de:54:fa:96:76:c3"}
+{"type":"wifi","event":"new","ssid":"Magda_2.4G","rssi":-89,"channel":1}
+{"type":"wifi","event":"new","ssid":"TP-Link_0C9C","rssi":-90,"channel":7}
+{"type":"wifi","event":"new","ssid":"Pulutek","rssi":-90,"channel":13}
+{"type":"wifi","event":"new","ssid":"NT_parter","rssi":-91,"channel":3}
+{"type":"wifi","event":"gone","ssid":"uplink_2.4G"}
+{"type":"wifi","event":"gone","ssid":"wiatrakowa"}
+{"type":"wifi","event":"gone","ssid":"DIR-825-4be6"}
+{"type":"wifi","event":"gone","ssid":"Markiza mała "}
+{"type": "ble", "event": "new", "mac": "f5:fe:d5:8f:6b:37", "name": "(unknown)", "rssi": -101, "manufacturer_data": "4c0012020001"}
+{"type": "ble", "event": "gone", "mac": "49:e4:fb:2b:26:29"}
+{"type":"wifi","event":"new","ssid":"uplink_2.4G","rssi":-83,"channel":10}
+{"type":"wifi","event":"new","ssid":"Markiza mała ","rssi":-91,"channel":1}
+{"type":"wifi","event":"gone","ssid":"Wiatrakowa26/28_2.4G"}
+{"type":"wifi","event":"gone","ssid":"Pulutek"}
+{"type":"wifi","event":"new","ssid":"Wiatrakowa26/28_2.4G","rssi":-82,"channel":2}
+{"type":"wifi","event":"new","ssid":"DIR-825-4be6","rssi":-93,"channel":13}
+{"type":"wifi","event":"new","ssid":"Pulutek","rssi":-93,"channel":13}
+{"type":"wifi","event":"gone","ssid":"uplink_2.4G"}
+{"type":"wifi","event":"gone","ssid":"TP-Link_0C9C"}
+{"type":"wifi","event":"gone","ssid":"NT_parter"}
+{"type":"heartbeat","ble_count":7,"wifi_count":15}
+{"type": "ble", "event": "gone", "mac": "c3:0d:65:c5:0d:cf"}
+{"type":"wifi","event":"new","ssid":"TP-Link_0C9C","rssi":-87,"channel":7}
+{"type":"wifi","event":"new","ssid":"TP-Link_83E0","rssi":-90,"channel":1}
+{"type":"wifi","event":"new","ssid":"NT_parter","rssi":-90,"channel":3}
+{"type":"wifi","event":"gone","ssid":"HH71V1_0E69_2.4G"}
+{"type":"wifi","event":"gone","ssid":"DIR-825-4be6"}
+{"type":"wifi","event":"gone","ssid":"Markiza mała "}
+{"type": "ble", "event": "new", "mac": "c3:0d:65:c5:0d:cf", "name": "(unknown)", "rssi": -97, "manufacturer_data": "4c0012020001"}
+{"type": "ble", "event": "gone", "mac": "f5:fe:d5:8f:6b:37"}
+{"type":"wifi","event":"new","ssid":"uplink_2.4G","rssi":-82,"channel":10}
+{"type":"wifi","event":"new","ssid":"HH71V1_0E69_2.4G","rssi":-90,"channel":1}
+{"type":"wifi","event":"gone","ssid":"shutterBox-36987af22ef6"}
+{"type":"wifi","event":"gone","ssid":"Pulutek"}
+{"type": "ble", "event": "new", "mac": "3f:47:93:0d:b1:52", "name": "(unknown)", "rssi": -90}
+{"type": "ble", "event": "new", "mac": "52:ae:d6:6a:df:c2", "name": "(unknown)", "rssi": -98, "manufacturer_data": "4c001006311ecd2d1dc2"}
+{"type": "ble", "event": "new", "mac": "f5:fe:d5:8f:6b:37", "name": "(unknown)", "rssi": -101, "manufacturer_data": "4c0012020001"}
+{"type": "ble", "event": "gone", "mac": "23:09:35:16:84:12"}
+{"type":"wifi","event":"new","ssid":"shutterBox-36987af22ef6","rssi":-91,"channel":1}
+{"type":"wifi","event":"new","ssid":"Pulutek","rssi":-92,"channel":13}
+{"type":"wifi","event":"gone","ssid":"HH71V1_0E69_2.4G"}
+{"type":"wifi","event":"gone","ssid":"Magda_2.4G"}
+{"type": "ble", "event": "gone", "mac": "f5:fe:d5:8f:6b:37"}
+{"type":"wifi","event":"new","ssid":"TP-Link_5140","rssi":-93,"channel":8}
+{"type":"wifi","event":"gone","ssid":"Wiatrakowa26/28_2.4G"}
+{"type": "ble", "event": "new", "mac": "f5:fe:d5:8f:6b:37", "name": "(unknown)", "rssi": -99, "manufacturer_data": "4c0012020001"}
+{"type": "ble", "event": "gone", "mac": "e4:0f:31:a5:bc:a8"}
+{"type":"wifi","event":"new","ssid":"wiatrakowa","rssi":-91,"channel":10}
+{"type":"wifi","event":"gone","ssid":"Pulutek"}
+{"type": "ble", "event": "new", "mac": "e4:0f:31:a5:bc:a8", "name": "RNCF16", "rssi": -98}
+{"type": "ble", "event": "gone", "mac": "ee:d5:e4:30:af:72"}
+{"type":"wifi","event":"new","ssid":"Wiatrakowa26/28_2.4G","rssi":-79,"channel":2}
+{"type":"wifi","event":"new","ssid":"Pulutek","rssi":-86,"channel":13}
+{"type":"wifi","event":"new","ssid":"Markiza mała ","rssi":-90,"channel":1}
+{"type":"wifi","event":"gone","ssid":"Skurwiaj"}
+{"type":"wifi","event":"gone","ssid":"TP-Link_5140"}
+{"type":"wifi","event":"gone","ssid":"wiatrakowa"}
+{"type":"heartbeat","ble_count":7,"wifi_count":15}
+{"type": "ble", "event": "gone", "mac": "52:ae:d6:6a:df:c2"}
+{"type": "ble", "event": "gone", "mac": "5c:74:9b:29:21:c1"}
+{"type": "ble", "event": "gone", "mac": "f5:fe:d5:8f:6b:37"}
+{"type":"wifi","event":"new","ssid":"Skurwiaj","rssi":-82,"channel":6}
+{"type":"wifi","event":"gone","ssid":"shutterBox-36987af2d77c"}
+{"type": "ble", "event": "new", "mac": "52:ae:d6:6a:df:c2", "name": "(unknown)", "rssi": -97, "manufacturer_data": "4c001006311ecd2d1dc2"}
+{"type": "ble", "event": "new", "mac": "a2:b9:bd:e2:51:c1", "name": "(unknown)", "rssi": -87, "service_uuid": "0000a032-0000-1000-8000-00805f9b34fb"}
+{"type": "ble", "event": "new", "mac": "f0:94:02:bb:2e:72", "name": "(unknown)", "rssi": -100, "manufacturer_data": "4c0012020000"}
+{"type": "ble", "event": "new", "mac": "f5:fe:d5:8f:6b:37", "name": "(unknown)", "rssi": -99, "manufacturer_data": "4c0012020001"}
+{"type":"wifi","event":"new","ssid":"shutterBox-36987af2d77c","rssi":-79,"channel":1}
+{"type":"wifi","event":"gone","ssid":"shutterBox-36987af22ef6"}
+{"type": "ble", "event": "gone", "mac": "52:ae:d6:6a:df:c2"}
+{"type": "ble", "event": "gone", "mac": "a2:b9:bd:e2:51:c1"}
+{"type": "ble", "event": "gone", "mac": "f0:94:02:bb:2e:72"}
+{"type":"wifi","event":"new","ssid":"shutterBox-36987af22ef6","rssi":-86,"channel":1}
+{"type":"wifi","event":"gone","ssid":"Wiatrakowa26/28_2.4G"}
+{"type": "ble", "event": "new", "mac": "52:ae:d6:6a:df:c2", "name": "(unknown)", "rssi": -98, "manufacturer_data": "4c001006311ecd2d1dc2"}
+{"type":"wifi","event":"new","ssid":"Wiatrakowa26/28_2.4G","rssi":-82,"channel":2}
+{"type":"wifi","event":"new","ssid":"HH71V1_0E69_2.4G","rssi":-89,"channel":1}
+{"type":"wifi","event":"new","ssid":"DIR-825-4be6","rssi":-93,"channel":13}
+{"type":"wifi","event":"gone","ssid":"shutterBox-36987af2cfbe"}
+{"type":"wifi","event":"gone","ssid":"shutterBox-36987af2d77c"}
+{"type":"wifi","event":"gone","ssid":"Skurwiaj"}
+{"type":"wifi","event":"gone","ssid":"TP-Link_0C9C"}
+{"type":"wifi","event":"gone","ssid":"Markiza mała "}
+{"type": "ble", "event": "new", "mac": "f0:94:02:bb:2e:72", "name": "(unknown)", "rssi": -98, "manufacturer_data": "4c0012020000"}
+{"type": "ble", "event": "gone", "mac": "e4:0f:31:a5:bc:a8"}
+{"type": "ble", "event": "gone", "mac": "f5:fe:d5:8f:6b:37"}
+{"type":"wifi","event":"new","ssid":"shutterBox-36987af2cfbe","rssi":-65,"channel":7}
+{"type":"wifi","event":"new","ssid":"shutterBox-36987af2d77c","rssi":-75,"channel":1}
+{"type":"wifi","event":"new","ssid":"Skurwiaj","rssi":-87,"channel":6}
+{"type":"wifi","event":"new","ssid":"TP-Link_0C9C","rssi":-87,"channel":7}
+{"type":"wifi","event":"new","ssid":"Magda_2.4G","rssi":-89,"channel":1}
+{"type":"wifi","event":"gone","ssid":"Pulutek"}
+{"type":"wifi","event":"gone","ssid":"TP-Link_83E0"}
+{"type":"wifi","event":"gone","ssid":"DIR-825-4be6"}
+{"type": "ble", "event": "new", "mac": "e4:0f:31:a5:bc:a8", "name": "RNCF16", "rssi": -96}
+{"type": "ble", "event": "new", "mac": "f5:fe:d5:8f:6b:37", "name": "(unknown)", "rssi": -99, "manufacturer_data": "4c0012020001"}
+{"type": "ble", "event": "gone", "mac": "f0:94:02:bb:2e:72"}
+{"type":"wifi","event":"new","ssid":"Pulutek","rssi":-92,"channel":13}
+{"type":"wifi","event":"new","ssid":"DIR-825-4be6","rssi":-93,"channel":13}
+{"type":"wifi","event":"gone","ssid":"Wiatrakowa26/28_2.4G"}
+{"type":"wifi","event":"gone","ssid":"HH71V1_0E69_2.4G"}
+{"type":"heartbeat","ble_count":6,"wifi_count":15}
+{"type": "ble", "event": "new", "mac": "f0:94:02:bb:2e:72", "name": "(unknown)", "rssi": -100, "manufacturer_data": "4c0012020000"}
+{"type": "ble", "event": "gone", "mac": "f5:fe:d5:8f:6b:37"}
+{"type":"wifi","event":"new","ssid":"Wiatrakowa26/28_2.4G","rssi":-81,"channel":2}
+{"type":"wifi","event":"new","ssid":"TP-Link_83E0","rssi":-91,"channel":1}
+{"type":"wifi","event":"new","ssid":"TP-Link_5140","rssi":-91,"channel":8}
+{"type":"wifi","event":"gone","ssid":"Magda_2.4G"}
+{"type":"wifi","event":"gone","ssid":"Pulutek"}
+{"type":"wifi","event":"gone","ssid":"DIR-825-4be6"}
+{"type": "ble", "event": "gone", "mac": "52:ae:d6:6a:df:c2"}
+{"type": "ble", "event": "gone", "mac": "f0:94:02:bb:2e:72"}
+{"type":"wifi","event":"new","ssid":"Magda_2.4G","rssi":-90,"channel":1}
+{"type":"wifi","event":"new","ssid":"Pulutek","rssi":-91,"channel":13}
+{"type":"wifi","event":"gone","ssid":"shutterBox-36987af22ef6"}
+{"type":"wifi","event":"gone","ssid":"TP-Link_83E0"}
+{"type": "ble", "event": "new", "mac": "3a:59:ed:b7:32:51", "name": "(unknown)", "rssi": -90}
+{"type": "ble", "event": "new", "mac": "f5:fe:d5:8f:6b:37", "name": "(unknown)", "rssi": -100, "manufacturer_data": "4c0012020001"}
+{"type": "ble", "event": "gone", "mac": "3f:47:93:0d:b1:52"}
+{"type":"wifi","event":"new","ssid":"shutterBox-36987af22ef6","rssi":-85,"channel":1}
+{"type":"wifi","event":"new","ssid":"Markiza mała ","rssi":-91,"channel":1}
+{"type":"wifi","event":"gone","ssid":"shutterBox-36987af2d77c"}
+{"type":"wifi","event":"gone","ssid":"TP-Link_5140"}
+{"type": "ble", "event": "new", "mac": "5c:74:9b:29:21:c1", "name": "(unknown)", "rssi": -92, "manufacturer_data": "4c001006351e5978c7f7"}
+{"type": "ble", "event": "new", "mac": "ee:d5:e4:30:af:72", "name": "(unknown)", "rssi": -82, "manufacturer_data": "4c0012020003"}
+{"type": "ble", "event": "gone", "mac": "e4:0f:31:a5:bc:a8"}
+{"type":"wifi","event":"new","ssid":"shutterBox-36987af2d77c","rssi":-74,"channel":1}
+{"type":"wifi","event":"new","ssid":"DIR-825-4be6","rssi":-90,"channel":13}
+{"type":"wifi","event":"gone","ssid":"Markiza mała "}
+{"type":"wifi","event":"gone","ssid":"Pulutek"}
+{"type": "ble", "event": "new", "mac": "e4:0f:31:a5:bc:a8", "name": "RNCF16", "rssi": -91}
+{"type": "ble", "event": "gone", "mac": "f5:fe:d5:8f:6b:37"}
+{"type":"wifi","event":"new","ssid":"Pulutek","rssi":-92,"channel":13}
+{"type":"wifi","event":"gone","ssid":"uplink_2.4G"}
+{"type":"wifi","event":"gone","ssid":"Magda_2.4G"}
+{"type":"wifi","event":"gone","ssid":"NT_parter"}
+{"type": "ble", "event": "new", "mac": "f5:fe:d5:8f:6b:37", "name": "(unknown)", "rssi": -98, "manufacturer_data": "4c0012020001"}
+{"type":"wifi","event":"new","ssid":"uplink_2.4G","rssi":-87,"channel":10}
+{"type":"wifi","event":"new","ssid":"Markiza mała ","rssi":-93,"channel":1}
+{"type":"heartbeat","ble_count":7,"wifi_count":15}
+{"type": "ble", "event": "new", "mac": "f3:b0:55:b5:79:e0", "name": "(unknown)", "rssi": -87, "manufacturer_data": "4c0012020000"}
+{"type": "ble", "event": "new", "mac": "f7:99:46:14:64:12", "name": "(unknown)", "rssi": -80, "manufacturer_data": "4c0012020001"}
+{"type": "ble", "event": "gone", "mac": "c3:0d:65:c5:0d:cf"}
+{"type": "ble", "event": "gone", "mac": "e4:0f:31:a5:bc:a8"}
+{"type": "ble", "event": "gone", "mac": "ee:d5:e4:30:af:72"}
+{"type":"wifi","event":"new","ssid":"TP-Link_83E0","rssi":-90,"channel":1}
+{"type":"wifi","event":"new","ssid":"HH71V1_0E69_2.4G","rssi":-90,"channel":1}
+{"type":"wifi","event":"gone","ssid":"shutterBox-36987af22ef6"}
+{"type":"wifi","event":"gone","ssid":"DIR-825-4be6"}
+{"type": "ble", "event": "new", "mac": "63:f3:04:8d:76:ac", "name": "(unknown)", "rssi": -99, "manufacturer_data": "4c0010063c1ef0ce96fa"}
+{"type": "ble", "event": "new", "mac": "e4:0f:31:a5:bc:a8", "name": "RNCF16", "rssi": -96}
+{"type": "ble", "event": "new", "mac": "f0:f4:36:ba:f0:57", "name": "(unknown)", "rssi": -101, "manufacturer_data": "4c0012020003"}
+{"type":"wifi","event":"new","ssid":"shutterBox-36987af22ef6","rssi":-84,"channel":1}
+{"type":"wifi","event":"new","ssid":"Magda_2.4G","rssi":-90,"channel":1}
+{"type":"wifi","event":"gone","ssid":"TP-Link_83E0"}
+{"type":"wifi","event":"gone","ssid":"Markiza mała "}
+{"type": "ble", "event": "gone", "mac": "63:f3:04:8d:76:ac"}
+{"type": "ble", "event": "gone", "mac": "f0:f4:36:ba:f0:57"}
+{"type":"wifi","event":"new","ssid":"TP-Link_5140","rssi":-90,"channel":8}
+{"type":"wifi","event":"gone","ssid":"HH71V1_0E69_2.4G"}
+{"type":"wifi","event":"gone","ssid":"Magda_2.4G"}
+{"type": "ble", "event": "new", "mac": "70:9a:dd:46:70:a2", "name": "(unknown)", "rssi": -95, "manufacturer_data": "4c001005381868ce44"}
+{"type":"wifi","event":"new","ssid":"Wiatrakowa_28_5","rssi":-91,"channel":1}
+{"type":"wifi","event":"new","ssid":"Markiza mała ","rssi":-91,"channel":1}
+{"type":"wifi","event":"new","ssid":"Magda_2.4G","rssi":-91,"channel":1}
+{"type":"wifi","event":"new","ssid":"HH71V1_0E69_2.4G","rssi":-91,"channel":1}
+{"type":"wifi","event":"gone","ssid":"TP-Link_0C9C"}
+{"type":"wifi","event":"gone","ssid":"TP-Link_5140"}
+{"type":"wifi","event":"gone","ssid":"Pulutek"}
+{"type": "ble", "event": "new", "mac": "65:24:b4:75:d5:35", "name": "(unknown)", "rssi": -83, "manufacturer_data": "4c0010063a1a8c5e7a6f"}
+{"type": "ble", "event": "gone", "mac": "5c:74:9b:29:21:c1"}
+{"type": "ble", "event": "gone", "mac": "77:29:86:02:87:d0"}
+{"type":"wifi","event":"new","ssid":"TP-Link_0C9C","rssi":-91,"channel":7}
+{"type":"wifi","event":"new","ssid":"NT_parter","rssi":-91,"channel":11}
+{"type":"wifi","event":"new","ssid":"Pulutek","rssi":-91,"channel":13}
+{"type":"wifi","event":"new","ssid":"DIR-825-4be6","rssi":-91,"channel":13}
+{"type":"wifi","event":"gone","ssid":"shutterBox-36987af2d59a"}
+{"type":"wifi","event":"gone","ssid":"Wiatrakowa_28_5"}
+{"type":"wifi","event":"gone","ssid":"Markiza mała "}
+{"type":"wifi","event":"gone","ssid":"Magda_2.4G"}
+{"type":"wifi","event":"new","ssid":"shutterBox-36987af2d59a","rssi":-65,"channel":11}
+{"type":"wifi","event":"new","ssid":"Markiza mała ","rssi":-92,"channel":1}
+{"type":"wifi","event":"new","ssid":"TP-Link_5140","rssi":-92,"channel":8}
+{"type":"wifi","event":"gone","ssid":"Skurwiaj"}
+{"type":"wifi","event":"gone","ssid":"TP-Link_0C9C"}
+{"type":"wifi","event":"gone","ssid":"DIR-825-4be6"}
+{"type":"heartbeat","ble_count":7,"wifi_count":15}
+{"type": "ble", "event": "new", "mac": "63:f3:04:8d:76:ac", "name": "(unknown)", "rssi": -98, "manufacturer_data": "4c0010063c1ef0ce96fa"}
+{"type":"wifi","event":"new","ssid":"Skurwiaj","rssi":-84,"channel":6}
+{"type":"wifi","event":"new","ssid":"TP-Link_0C9C","rssi":-87,"channel":7}
+{"type":"wifi","event":"new","ssid":"Magda_2.4G","rssi":-91,"channel":1}
+{"type":"wifi","event":"gone","ssid":"shutterBox-36987af22ef6"}
+{"type":"wifi","event":"gone","ssid":"TP-Link_5140"}
+{"type":"wifi","event":"gone","ssid":"Pulutek"}
+{"type": "ble", "event": "new", "mac": "74:00:18:24:7e:af", "name": "(unknown)", "rssi": -101, "manufacturer_data": "4c0010060219d5ced648"}
+{"type": "ble", "event": "new", "mac": "f8:f1:df:8c:ba:ee", "name": "(unknown)", "rssi": -94, "manufacturer_data": "4c0012020003"}
+{"type": "ble", "event": "gone", "mac": "63:f3:04:8d:76:ac"}
+{"type": "ble", "event": "gone", "mac": "f5:fe:d5:8f:6b:37"}
+{"type":"wifi","event":"new","ssid":"shutterBox-36987af22ef6","rssi":-85,"channel":1}
+{"type":"wifi","event":"new","ssid":"Pulutek","rssi":-94,"channel":13}
+{"type":"wifi","event":"gone","ssid":"shutterBox-36987af2d77c"}
+{"type":"wifi","event":"gone","ssid":"Skurwiaj"}
+{"type": "ble", "event": "new", "mac": "3f:5f:12:87:c3:4f", "name": "(unknown)", "rssi": -77}
+{"type": "ble", "event": "gone", "mac": "3a:59:ed:b7:32:51"}
+{"type":"wifi","event":"new","ssid":"shutterBox-36987af2d77c","rssi":-73,"channel":1}
+{"type":"wifi","event":"new","ssid":"Skurwiaj","rssi":-84,"channel":6}
+{"type":"wifi","event":"new","ssid":"TP-Link_83E0","rssi":-89,"channel":1}
+{"type":"wifi","event":"gone","ssid":"NT_parter"}
+{"type":"wifi","event":"gone","ssid":"Markiza mała "}
+{"type":"wifi","event":"gone","ssid":"Pulutek"}
+{"type": "ble", "event": "new", "mac": "1e:aa:bc:12:03:31", "name": "(unknown)", "rssi": -91}
+{"type": "ble", "event": "gone", "mac": "3f:5f:12:87:c3:4f"}
+{"type": "ble", "event": "gone", "mac": "74:00:18:24:7e:af"}
+{"type":"wifi","event":"new","ssid":"NT_parter","rssi":-92,"channel":11}
+{"type":"wifi","event":"new","ssid":"TP-Link_5140","rssi":-93,"channel":8}
+{"type":"wifi","event":"gone","ssid":"TP-Link_83E0"}
+{"type":"wifi","event":"gone","ssid":"HH71V1_0E69_2.4G"}
+{"type":"wifi","event":"new","ssid":"TP-Link_83E0","rssi":-94,"channel":1}
+{"type":"wifi","event":"new","ssid":"Markiza mała ","rssi":-94,"channel":1}
+{"type":"wifi","event":"new","ssid":"DIR-825-4be6","rssi":-94,"channel":13}
+{"type":"wifi","event":"gone","ssid":"Wiatrakowa26/28_2.4G"}
+{"type":"wifi","event":"gone","ssid":"Magda_2.4G"}
+{"type":"wifi","event":"gone","ssid":"TP-Link_5140"}
+{"type": "ble", "event": "gone", "mac": "f8:f1:df:8c:ba:ee"}
+{"type":"wifi","event":"new","ssid":"Wiatrakowa26/28_2.4G","rssi":-82,"channel":2}
+{"type":"wifi","event":"new","ssid":"Magda_2.4G","rssi":-92,"channel":1}
+{"type":"wifi","event":"new","ssid":"Wiatrakowa_28_5","rssi":-92,"channel":1}
+{"type":"wifi","event":"gone","ssid":"NT_parter"}
+{"type":"wifi","event":"gone","ssid":"Markiza mała "}
+{"type":"wifi","event":"gone","ssid":"DIR-825-4be6"}
+{"type":"heartbeat","ble_count":6,"wifi_count":15}
+{"type": "ble", "event": "new", "mac": "f8:f1:df:8c:ba:ee", "name": "(unknown)", "rssi": -94, "manufacturer_data": "4c0012020003"}
+{"type":"wifi","event":"new","ssid":"TP-Link_5140","rssi":-89,"channel":8}
+{"type":"wifi","event":"new","ssid":"NT_parter","rssi":-89,"channel":11}
+{"type":"wifi","event":"new","ssid":"Markiza mała ","rssi":-91,"channel":1}
+{"type":"wifi","event":"gone","ssid":"Wiatrakowa26/28_2.4G"}
+{"type":"wifi","event":"gone","ssid":"Magda_2.4G"}
+{"type":"wifi","event":"gone","ssid":"Wiatrakowa_28_5"}
+{"type":"wifi","event":"new","ssid":"Wiatrakowa26/28_2.4G","rssi":-82,"channel":2}
+{"type":"wifi","event":"new","ssid":"Pulutek","rssi":-90,"channel":13}
+{"type":"wifi","event":"new","ssid":"Magda_2.4G","rssi":-92,"channel":1}
+{"type":"wifi","event":"gone","ssid":"Skurwiaj"}
+{"type":"wifi","event":"gone","ssid":"TP-Link_5140"}
+{"type":"wifi","event":"gone","ssid":"TP-Link_83E0"}
+{"type":"wifi","event":"new","ssid":"TP-Link_83E0","rssi":-91,"channel":1}
+{"type":"wifi","event":"new","ssid":"Wiatrakowa_28_5","rssi":-92,"channel":1}
+{"type":"wifi","event":"gone","ssid":"Pulutek"}
+{"type":"wifi","event":"gone","ssid":"Magda_2.4G"}
+{"type":"wifi","event":"new","ssid":"Skurwiaj","rssi":-86,"channel":6}
+{"type":"wifi","event":"new","ssid":"TP-Link_5140","rssi":-87,"channel":8}
+{"type":"wifi","event":"new","ssid":"HH71V1_0E69_2.4G","rssi":-89,"channel":1}
+{"type":"wifi","event":"gone","ssid":"Wiatrakowa26/28_2.4G"}
+{"type":"wifi","event":"gone","ssid":"Wiatrakowa_28_5"}
+{"type":"wifi","event":"gone","ssid":"Markiza mała "}
+{"type":"wifi","event":"new","ssid":"Magda_2.4G","rssi":-92,"channel":1}
+{"type":"wifi","event":"new","ssid":"Wiatrakowa_28_5","rssi":-96,"channel":1}
+{"type":"wifi","event":"new","ssid":"DIR-825-4be6","rssi":-96,"channel":13}
+{"type":"wifi","event":"gone","ssid":"Skurwiaj"}
+{"type":"wifi","event":"gone","ssid":"TP-Link_5140"}
+{"type":"wifi","event":"gone","ssid":"HH71V1_0E69_2.4G"}
