@@ -31,10 +31,12 @@ python3 src/scanner.py --wifi --usb --nfc
 | Flaga | Opis |
 |-------|------|
 | `--audit` | Pełny audyt bezpieczeństwa (testy podatności, port scanning) |
+| `--report-email ADR` | Po zakończeniu wyślij raport (combined_report) emailem (SMTP z `.env`, jak ESP32) |
 
 **Przykład:**
 ```bash
 python3 src/scanner.py --wifi --audit
+python3 src/scanner.py --audit --report-email twoj@email.me
 ```
 
 ## 🌐 API Server

@@ -231,16 +231,12 @@ def render_dashboard_html(devices: List[Dict], summary: Dict, full_data: Dict) -
             }}, 1000);
         }}
         
-        // Zatrzymaj heartbeat i wyślij shutdown przy zamknięciu
+        // Przy zamknięciu karty wyślij shutdown; serwer odczeka 3 s – jeśli to była nawigacja, nowa strona anuluje
         function stopAndShutdown() {{
-            if (heartbeatInterval) {{
-                clearInterval(heartbeatInterval);
-            }}
-            // Spróbuj wszystkie metody
+            if (heartbeatInterval) {{ clearInterval(heartbeatInterval); }}
             navigator.sendBeacon('/shutdown');
             fetch('/shutdown', {{method: 'POST', keepalive: true}}).catch(() => {{}});
         }}
-        
         window.addEventListener('beforeunload', stopAndShutdown);
         window.addEventListener('unload', stopAndShutdown);
         window.addEventListener('pagehide', stopAndShutdown);
@@ -544,16 +540,12 @@ def render_stats_html(total: int, by_protocol: Dict, by_encryption: Dict, by_ris
             }}, 1000);
         }}
         
-        // Zatrzymaj heartbeat i wyślij shutdown przy zamknięciu
+        // Przy zamknięciu karty wyślij shutdown; serwer odczeka 3 s – jeśli to była nawigacja, nowa strona anuluje
         function stopAndShutdown() {{
-            if (heartbeatInterval) {{
-                clearInterval(heartbeatInterval);
-            }}
-            // Spróbuj wszystkie metody
+            if (heartbeatInterval) {{ clearInterval(heartbeatInterval); }}
             navigator.sendBeacon('/shutdown');
             fetch('/shutdown', {{method: 'POST', keepalive: true}}).catch(() => {{}});
         }}
-        
         window.addEventListener('beforeunload', stopAndShutdown);
         window.addEventListener('unload', stopAndShutdown);
         window.addEventListener('pagehide', stopAndShutdown);
@@ -713,16 +705,12 @@ def render_devices_html(devices: List[Dict], filters: Dict) -> str:
             }, 1000);
         }
         
-        // Zatrzymaj heartbeat i wyślij shutdown przy zamknięciu
+        // Przy zamknięciu karty wyślij shutdown; serwer odczeka 3 s – jeśli to nawigacja, nowa strona anuluje
         function stopAndShutdown() {
-            if (heartbeatInterval) {
-                clearInterval(heartbeatInterval);
-            }
-            // Spróbuj wszystkie metody
+            if (heartbeatInterval) { clearInterval(heartbeatInterval); }
             navigator.sendBeacon('/shutdown');
             fetch('/shutdown', {method: 'POST', keepalive: true}).catch(function() {});
         }
-        
         window.addEventListener('beforeunload', stopAndShutdown);
         window.addEventListener('unload', stopAndShutdown);
         window.addEventListener('pagehide', stopAndShutdown);
@@ -977,33 +965,51 @@ import threading
 import time
 shutdown_event = threading.Event()
 last_request_time = time.time()  # Czas ostatniego requestu (heartbeat)
+shutdown_timer = None  # Timer: wyłączenie po 3 s od /shutdown, anulowane gdy przyjdzie request (nawigacja)
 
 if FLASK_AVAILABLE and app:
     # Zmienna do śledzenia ostatniego requestu (heartbeat)
     import time
     last_request_time = time.time()
     
+    def _do_shutdown():
+        global shutdown_timer
+        shutdown_timer = None
+        shutdown_event.set()
+    
     @app.route('/shutdown', methods=['POST', 'GET'])
     def shutdown():
-        """Zatrzymuje serwer API."""
-        global last_request_time
+        """Żądanie wyłączenia - odczekaj 3 s; jeśli w tym czasie przyjdzie request (np. nowa strona), anuluj."""
+        global shutdown_timer, last_request_time
         last_request_time = time.time()
-        shutdown_event.set()
-        # Zwróć odpowiedź natychmiast (przed zamknięciem serwera)
-        return 'Server shutting down...', 200
+        if shutdown_timer:
+            shutdown_timer.cancel()
+        shutdown_timer = threading.Timer(3.0, _do_shutdown)
+        shutdown_timer.daemon = True
+        shutdown_timer.start()
+        return 'Server will shut down in 3s unless new page loads...', 200
     
     @app.route('/heartbeat', methods=['GET', 'POST'])
     def heartbeat():
         """Heartbeat - przeglądarka wysyła to co sekundę aby pokazać że jest otwarta."""
-        global last_request_time
+        global last_request_time, shutdown_timer
         last_request_time = time.time()
+        if shutdown_timer:
+            shutdown_timer.cancel()
+            shutdown_timer = None
         return 'OK', 200
     
     @app.before_request
     def update_last_request():
-        """Aktualizuj czas ostatniego requestu przy każdym żądaniu."""
-        global last_request_time
+        """Anuluj zaplanowane wyłączenie przy każdym żądaniu (np. nawigacja = nowa strona)."""
+        global last_request_time, shutdown_timer
         last_request_time = time.time()
+        if shutdown_timer:
+            try:
+                shutdown_timer.cancel()
+            except Exception:
+                pass
+            shutdown_timer = None
     
     @app.route('/')
     def index():
@@ -1044,16 +1050,12 @@ if FLASK_AVAILABLE and app:
             }, 1000);
         }
         
-        // Zatrzymaj heartbeat i wyślij shutdown przy zamknięciu
+        // Przy zamknięciu karty wyślij shutdown; serwer odczeka 3 s – jeśli to nawigacja, nowa strona anuluje
         function stopAndShutdown() {
-            if (heartbeatInterval) {
-                clearInterval(heartbeatInterval);
-            }
-            // Spróbuj wszystkie metody
+            if (heartbeatInterval) { clearInterval(heartbeatInterval); }
             navigator.sendBeacon('/shutdown');
             fetch('/shutdown', {method: 'POST', keepalive: true}).catch(function() {});
         }
-        
         window.addEventListener('beforeunload', stopAndShutdown);
         window.addEventListener('unload', stopAndShutdown);
         window.addEventListener('pagehide', stopAndShutdown);
