@@ -1773,10 +1773,9 @@ def _check_threat_intelligence(devices: List[Device]) -> Dict[str, Any]:
     return results
 
 
- HEAD
 
-=======
->>>>>>> b6ada5a362eeb9ab5f698bccde631164f6286147
+
+
 def _send_report_email(to_addr: str, filepath: str) -> None:
     """Wysyła raport (combined_report JSON) emailem. SMTP z .env (jak ESP32)."""
     try:
@@ -1825,10 +1824,7 @@ def _send_report_email(to_addr: str, filepath: str) -> None:
     except Exception as e:
         console.print(f"[red]❌ Błąd SMTP (sprawdź .env, token Proton, sieć): {e}[/red]")
 
-<<<<<<< HEAD
-=======
 
->>>>>>> b6ada5a362eeb9ab5f698bccde631164f6286147
 def main():
     """Główna funkcja - punkt wejścia programu"""
     import argparse
@@ -1849,15 +1845,10 @@ def main():
     # Nowe funkcjonalności
     parser.add_argument('--schedule', type=str, help='Zaplanuj skanowanie (np. "daily 09:00", "hourly", "every 30 minutes")')
     parser.add_argument('--monitor', action='store_true', help='Uruchom monitoring w czasie rzeczywistym')
-<<<<<<< HEAD
-    parser.add_argument('--interval', type=int, default=300, help='Interwał monitoringu w sekundach (domyślnie 300 = 5 minut)')	
-    parser.add_argument('--report-email', metavar='ADR', default=None, help='Po zakończeniu skanowania wyślij raport (combined_report) emailem (SMTP z .env, jak ESP32)')
-
-=======
     parser.add_argument('--interval', type=int, default=300, help='Interwał monitoringu w sekundach (domyślnie 300 = 5 minut)')
     parser.add_argument('--report-email', metavar='ADR', default=None, help='Po zakończeniu skanowania wyślij raport (combined_report) emailem (SMTP z .env, jak ESP32)')
     
->>>>>>> b6ada5a362eeb9ab5f698bccde631164f6286147
+
     args = parser.parse_args()
     
     console.print(Panel.fit(
@@ -2141,18 +2132,10 @@ def main():
         
         # Generuj kompleksowy raport łączący wszystkie dane
         combined_report = scanner.generate_combined_report(threat_intel_data=threat_intel_results if threat_intel_results else None)
-<<<<<<< HEAD
 
         if args.report_email and combined_report and os.path.isfile(combined_report):
             _send_report_email(args.report_email, combined_report)
 
-=======
-        
-        # Wyślij raport emailem jeśli podano --report-email (SMTP z .env, jak ESP32)
-        if args.report_email and combined_report and os.path.isfile(combined_report):
-            _send_report_email(args.report_email, combined_report)
-        
->>>>>>> b6ada5a362eeb9ab5f698bccde631164f6286147
         console.print("[bold green]✅ Skanowanie zakończone![/bold green]\n")
         
         # Uruchom API server jeśli żądane
