@@ -1,0 +1,70 @@
+{"type": "ble", "event": "new", "mac": "30:a1:f6:59:16:20", "name": "(unknown)", "rssi": -93}
+{"type": "ble", "event": "new", "mac": "5e:c8:72:45:8d:e5", "name": "(unknown)", "rssi": -99, "manufacturer_data": "4c001005371885b3ff", "manufacturer_hint": "Apple (np. AirTag, AirPods, Find My)"}
+{"type": "ble", "event": "new", "mac": "69:00:a1:80:e0:12", "name": "(unknown)", "rssi": -98, "manufacturer_data": "4c00100511189540e1", "manufacturer_hint": "Apple (np. AirTag, AirPods, Find My)"}
+{"type": "ble", "event": "new", "mac": "6c:58:7b:29:51:df", "name": "(unknown)", "rssi": -96}
+{"type": "ble", "event": "new", "mac": "b4:3a:31:89:e2:d0", "name": "PR BT #58064", "rssi": -85, "vendor": "Silicon Laboratories"}
+{"type": "ble", "event": "new", "mac": "e0:b7:fc:37:ea:44", "name": "(unknown)", "rssi": -88, "manufacturer_data": "4c0012020003", "manufacturer_hint": "Apple (np. AirTag, AirPods, Find My)"}
+{"type": "ble", "event": "new", "mac": "eb:5f:61:ad:59:f1", "name": "(unknown)", "rssi": -91, "manufacturer_data": "4c0012020003", "manufacturer_hint": "Apple (np. AirTag, AirPods, Find My)"}
+{"type": "ble", "event": "gone", "mac": "4a:a3:85:75:a1:4f"}
+{"type": "ble", "event": "gone", "mac": "f1:86:6f:f9:b9:22"}
+{"type": "wifi", "event": "new", "ssid": "Wiatrakowa26/4", "bssid": "78:88:8A:00:A6:86", "rssi": -79, "channel": 10, "ap_vendor": "CDR Sp. z o.o. Sp. k."}
+{"type": "wifi", "event": "new", "ssid": "Pulutek", "bssid": "B0:6E:BF:98:69:D8", "rssi": -88, "channel": 13, "ap_vendor": "ASUSTek COMPUTER INC."}
+{"type": "wifi", "event": "new", "ssid": "HH71V1_0E69_2.4G", "bssid": "40:5F:7D:75:0E:69", "rssi": -90, "channel": 1, "ap_vendor": "TCT mobile ltd"}
+{"type": "wifi", "event": "new", "ssid": "uplink_2.4G", "bssid": "78:88:8A:00:BC:0C", "rssi": -93, "channel": 10, "ap_vendor": "CDR Sp. z o.o. Sp. k."}
+{"type": "wifi", "event": "new", "ssid": "Magda_2.4G", "bssid": "78:88:8A:00:A6:68", "rssi": -95, "channel": 1, "ap_vendor": "CDR Sp. z o.o. Sp. k."}
+{"type": "wifi", "event": "gone", "ssid": "TP-Link_A6E9"}
+{"type":"heartbeat","ble_count":15,"wifi_count":12}
+{"type": "ble", "event": "new", "mac": "63:11:2d:bb:64:5d", "name": "(unknown)", "rssi": -97}
+{"type": "ble", "event": "new", "mac": "e4:0f:31:a5:bc:a8", "name": "RNCF16", "rssi": -96}
+{"type": "ble", "event": "new", "mac": "f3:8a:9d:bb:61:37", "name": "(unknown)", "rssi": -84, "manufacturer_data": "4c0012020000", "manufacturer_hint": "Apple (np. AirTag, AirPods, Find My)"}
+{"type": "ble", "event": "gone", "mac": "54:68:50:84:dc:1f"}
+{"type": "ble", "event": "gone", "mac": "5e:c8:72:45:8d:e5"}
+{"type": "ble", "event": "gone", "mac": "69:00:a1:80:e0:12"}
+{"type": "ble", "event": "gone", "mac": "6c:58:7b:29:51:df"}
+{"type": "ble", "event": "gone", "mac": "a6:d7:3c:dd:05:13"}
+{"type": "ble", "event": "gone", "mac": "b4:3a:31:89:e2:d0", "vendor": "Silicon Laboratories"}
+{"type": "ble", "event": "gone", "mac": "d4:62:10:d7:56:d5"}
+{"type": "ble", "event": "gone", "mac": "eb:5f:61:ad:59:f1"}
+{"type": "ble", "event": "gone", "mac": "ed:07:ca:07:4c:ba"}
+{"type": "wifi", "event": "new", "ssid": "TP-Link_0C9C", "bssid": "9C:A2:F4:67:0C:9C", "rssi": -86, "channel": 7, "ap_vendor": "TP-Link Systems Inc"}
+{"type": "wifi", "event": "new", "ssid": "Heniu", "bssid": "50:9A:88:1D:BC:F0", "rssi": -90, "channel": 10, "ap_vendor": "HUAWEI TECHNOLOGIES CO.,LTD"}
+{"type": "wifi", "event": "new", "ssid": "TP-Link_A6E9", "bssid": "60:A4:B7:60:A6:E9", "rssi": -95, "channel": 11, "ap_vendor": "TP-Link Systems Inc"}
+{"type": "wifi", "event": "gone", "ssid": "Skurwiaj"}
+{"type": "ble", "event": "new", "mac": "5e:c8:72:45:8d:e5", "name": "(unknown)", "rssi": -91, "manufacturer_data": "4c001005371885b3ff", "manufacturer_hint": "Apple (np. AirTag, AirPods, Find My)"}
+{"type": "ble", "event": "new", "mac": "dc:97:4c:aa:a2:7c", "name": "(unknown)", "rssi": -94, "manufacturer_data": "4c0012020003", "manufacturer_hint": "Apple (np. AirTag, AirPods, Find My)"}
+{"type": "ble", "event": "new", "mac": "eb:5f:61:ad:59:f1", "name": "(unknown)", "rssi": -103, "manufacturer_data": "4c0012020003", "manufacturer_hint": "Apple (np. AirTag, AirPods, Find My)"}
+{"type": "ble", "event": "gone", "mac": "30:a1:f6:59:16:20"}
+{"type": "ble", "event": "gone", "mac": "63:11:2d:bb:64:5d"}
+{"type": "ble", "event": "gone", "mac": "7b:56:a2:89:76:a9"}
+{"type": "ble", "event": "gone", "mac": "f3:8a:9d:bb:61:37"}
+{"type": "wifi", "event": "new", "ssid": "Skurwiaj", "bssid": "BC:76:5E:E9:43:62", "rssi": -77, "channel": 6, "ap_vendor": "Samsung Electronics Co.,Ltd"}
+{"type": "wifi", "event": "new", "ssid": "DIRECT-oC-EPSON-L3560 Series", "bssid": "A6:D7:3C:DD:85:13", "rssi": -90, "channel": 1}
+{"type": "wifi", "event": "new", "ssid": "Wiatrakowa26/28_2.4G", "bssid": "5C:E9:31:21:25:90", "rssi": -93, "channel": 2, "ap_vendor": "TP-Link Systems Inc"}
+{"type": "wifi", "event": "gone", "ssid": "Heniu"}
+{"type": "wifi", "event": "gone", "ssid": "TP-Link_A6E9"}
+{"type": "ble", "event": "new", "mac": "ed:a9:33:4d:f9:ee", "name": "(unknown)", "rssi": -98, "manufacturer_data": "4c0012020001", "manufacturer_hint": "Apple (np. AirTag, AirPods, Find My)"}
+{"type": "ble", "event": "new", "mac": "f3:8a:9d:bb:61:37", "name": "(unknown)", "rssi": -95, "manufacturer_data": "4c0012020000", "manufacturer_hint": "Apple (np. AirTag, AirPods, Find My)"}
+{"type": "ble", "event": "gone", "mac": "e4:0f:31:a5:bc:a8"}
+{"type": "wifi", "event": "new", "ssid": "NT_parter", "bssid": "E8:65:D4:42:EC:E8", "rssi": -92, "channel": 4, "ap_vendor": "Tenda Technology Co.,Ltd.Dongguan branch"}
+{"type": "wifi", "event": "new", "ssid": "TP-Link_A6E9", "bssid": "60:A4:B7:60:A6:E9", "rssi": -92, "channel": 11, "ap_vendor": "TP-Link Systems Inc"}
+{"type": "wifi", "event": "gone", "ssid": "Wiatrakowa26/4"}
+{"type": "wifi", "event": "gone", "ssid": "DIRECT-oC-EPSON-L3560 Series"}
+{"type": "wifi", "event": "gone", "ssid": "uplink_2.4G"}
+{"type": "ble", "event": "new", "mac": "d2:e9:65:e9:21:fd", "name": "(unknown)", "rssi": -97, "manufacturer_data": "4c0012020002", "manufacturer_hint": "Apple (np. AirTag, AirPods, Find My)"}
+{"type": "ble", "event": "new", "mac": "e4:0f:31:a5:bc:a8", "name": "RNCF16", "rssi": -95}
+{"type": "wifi", "event": "new", "ssid": "Wiatrakowa26/4", "bssid": "78:88:8A:00:A6:86", "rssi": -81, "channel": 10, "ap_vendor": "CDR Sp. z o.o. Sp. k."}
+{"type": "wifi", "event": "new", "ssid": "Heniu", "bssid": "50:9A:88:1D:BC:F0", "rssi": -88, "channel": 10, "ap_vendor": "HUAWEI TECHNOLOGIES CO.,LTD"}
+{"type": "wifi", "event": "new", "ssid": "DIRECT-oC-EPSON-L3560 Series", "bssid": "A6:D7:3C:DD:85:13", "rssi": -91, "channel": 1}
+{"type": "wifi", "event": "gone", "ssid": "Pulutek"}
+{"type": "wifi", "event": "gone", "ssid": "Magda_2.4G"}
+{"type": "ble", "event": "new", "mac": "5d:1b:04:aa:f1:c2", "name": "(unknown)", "rssi": -73}
+{"type": "ble", "event": "new", "mac": "a6:d7:3c:dd:05:13", "name": "(unknown)", "rssi": -106, "service_uuid": "802a0000-4ef4-4e59-b573-2bed4a4ac159", "manufacturer_data": "400000c202"}
+{"type": "ble", "event": "new", "mac": "fe:2e:5a:4b:b6:64", "name": "(unknown)", "rssi": -91, "manufacturer_data": "4c0012020000", "manufacturer_hint": "Apple (np. AirTag, AirPods, Find My)"}
+{"type": "ble", "event": "gone", "mac": "48:00:3f:89:fa:d9"}
+{"type": "ble", "event": "gone", "mac": "d2:e9:65:e9:21:fd"}
+{"type": "ble", "event": "gone", "mac": "dc:97:4c:aa:a2:7c"}
+{"type": "ble", "event": "gone", "mac": "e0:b7:fc:37:ea:44"}
+{"type": "wifi", "event": "new", "ssid": "Pulutek", "bssid": "B0:6E:BF:98:69:D8", "rssi": -90, "channel": 13, "ap_vendor": "ASUSTek COMPUTER INC."}
+{"type": "wifi", "event": "new", "ssid": "uplink_2.4G", "bssid": "78:88:8A:00:BC:0C", "rssi": -93, "channel": 10, "ap_vendor": "CDR Sp. z o.o. Sp. k."}
+{"type": "wifi", "event": "gone", "ssid": "shutterBox-36987af22ef6"}
+{"type": "wifi", "event": "gone", "ssid": "Wiatrakowa26/28_2.4G"}
