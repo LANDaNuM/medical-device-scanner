@@ -1,0 +1,1498 @@
+#!/usr/bin/env python3
+"""
+Simple REST API server for scanner data access.
+
+API provides:
+- Device list (with filtering)
+- Device details
+- Reports
+- Statistics
+- Scans
+
+USAGE:
+    python src/api_server.py              # Run server (default port 5000)
+    python src/api_server.py --port 8080   # Run on port 8080
+"""
+
+import sys
+import os
+from pathlib import Path
+import json
+from datetime import datetime
+from typing import Optional, List, Dict
+
+# Add src to path
+script_dir = Path(__file__).parent
+sys.path.insert(0, str(script_dir))
+
+try:
+    from flask import Flask, jsonify, request, Response, render_template_string, render_template_string
+    FLASK_AVAILABLE = True
+except ImportError:
+    FLASK_AVAILABLE = False
+    Flask = None
+    Response = None
+    render_template_string = None
+
+from rich.console import Console
+from rich.panel import Panel
+
+console = Console()
+
+
+def json_response(data: Dict, pretty: bool = False) -> Response:
+    """Return JSON response with optional pretty-printing."""
+    if pretty:
+        response = Response(
+            json.dumps(data, indent=2, ensure_ascii=False),
+            mimetype='application/json'
+        )
+    else:
+        response = jsonify(data)
+    return response
+
+# Data directories – reports in project root
+project_root = Path(__file__).parent.parent
+scans_dir = project_root / "reports"
+reports_dir = project_root / "reports"
+# Create directories if they do not exist
+scans_dir.mkdir(exist_ok=True)
+reports_dir.mkdir(exist_ok=True)
+
+app = Flask(__name__) if FLASK_AVAILABLE else None
+
+
+def load_latest_combined_report() -> Optional[Dict]:
+    """Load latest combined_report (contains all data)."""
+    combined_files = sorted(list(reports_dir.glob("combined_report_*.json")))
+    if not combined_files:
+        return None
+    
+    latest_file = combined_files[-1]
+    try:
+        with open(latest_file, 'r', encoding='utf-8') as f:
+            combined_data = json.load(f)
+            # Convert combined_report to dashboard-compatible format
+            if 'scan' in combined_data and 'analysis' in combined_data:
+                # Merge data from scan and analysis
+                result = {
+                    'devices': combined_data.get('scan', {}).get('devices', []),
+                    'summary': combined_data.get('analysis', {}).get('summary', {}),
+                    'report_timestamp': combined_data.get('report_timestamp'),
+                    'scan_timestamp': combined_data.get('scan', {}).get('scan_timestamp'),
+                    'total_devices': combined_data.get('scan', {}).get('total_devices', 0),
+                    'protocols_scanned': combined_data.get('scan', {}).get('protocols_scanned', []),
+                    'risk_groups': combined_data.get('analysis', {}).get('risk_groups', {}),
+                    'vulnerabilities': combined_data.get('analysis', {}).get('vulnerabilities', {}),
+                    'threat_intelligence': combined_data.get('threat_intelligence', {}),
+                    'threat_intelligence_summary': combined_data.get('threat_intelligence_summary', {})
+                }
+                return result
+            return combined_data
+    except Exception as e:
+        console.print(f"[yellow]⚠️  Error loading combined_report: {e}[/yellow]")
+        return None
+
+
+def load_latest_scan() -> Optional[Dict]:
+    """Load latest scan (legacy format – backward compatibility)."""
+    scan_files = sorted(list(scans_dir.glob("scan_*.json")))
+    if not scan_files:
+        return None
+    
+    latest_file = scan_files[-1]
+    try:
+        with open(latest_file, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except Exception:
+        return None
+
+
+def load_latest_report() -> Optional[Dict]:
+    """Load latest report (legacy format – backward compatibility)."""
+    report_files = sorted(list(reports_dir.glob("report_*.json")))
+    if not report_files:
+        return None
+    
+    latest_file = report_files[-1]
+    try:
+        with open(latest_file, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except Exception:
+        return None
+
+
+def load_latest_data() -> Optional[Dict]:
+    """Load latest data – try combined_report first, then legacy formats."""
+    # Try combined_report first (new format)
+    data = load_latest_combined_report()
+    if data:
+        return data
+    
+    # Fall back to legacy formats
+    data = load_latest_report()
+    if data:
+        return data
+    
+    data = load_latest_scan()
+    if data:
+        return data
+    
+    return None
+
+
+def filter_devices(devices: List[Dict], filters: Dict) -> List[Dict]:
+    """Filter devices by given parameters."""
+    filtered = devices
+    
+    # Filter by protocol
+    if 'protocol' in filters:
+        protocol_filter = filters['protocol'].upper()
+        def protocol_matches(device):
+            device_protocol = device.get('protocol', '')
+            if isinstance(device_protocol, dict):
+                device_protocol = device_protocol.get('value', device_protocol.get('name', ''))
+            elif hasattr(device_protocol, 'value'):
+                device_protocol = device_protocol.value
+            return str(device_protocol).upper() == protocol_filter
+        filtered = [d for d in filtered if protocol_matches(d)]
+    
+    # Filter by security score (min)
+    if 'score_min' in filters:
+        try:
+            score_min = int(filters['score_min'])
+            filtered = [d for d in filtered if d.get('security_score', 0) >= score_min]
+        except ValueError:
+            pass
+    
+    # Filter by security score (max)
+    if 'score_max' in filters:
+        try:
+            score_max = int(filters['score_max'])
+            filtered = [d for d in filtered if d.get('security_score', 100) <= score_max]
+        except ValueError:
+            pass
+    
+    # Filter by encryption
+    if 'has_encryption' in filters:
+        has_enc = filters['has_encryption'].lower() == 'true'
+        filtered = [d for d in filtered if d.get('has_encryption', False) == has_enc]
+    
+    # Search by name/MAC
+    if 'search' in filters:
+        search_term = filters['search'].lower()
+        filtered = [
+            d for d in filtered
+            if search_term in d.get('name', '').lower() or search_term in d.get('mac_address', '').lower()
+        ]
+    
+    return filtered
+
+
+def render_dashboard_html(devices: List[Dict], summary: Dict, full_data: Dict) -> str:
+    """Render full graphical dashboard with report."""
+    total = summary.get('total_devices', len(devices))
+    high_risk = summary.get('high_risk_count', len([d for d in devices if d.get('security_score', 100) < 50]))
+    medium_risk = summary.get('medium_risk_count', len([d for d in devices if 50 <= d.get('security_score', 100) < 80]))
+    low_risk = summary.get('low_risk_count', len([d for d in devices if d.get('security_score', 100) >= 80]))
+    avg_score = summary.get('average_security_score', sum(d.get('security_score', 0) for d in devices) / total if total > 0 else 0)
+    
+    # Protocol stats
+    protocols = {}
+    for device in devices:
+        proto = device.get('protocol', 'Unknown')
+        protocols[proto] = protocols.get(proto, 0) + 1
+    
+    html = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Full Report - Medical Device Scanner</title>
+    <script>
+        // Auto-close server when browser closes
+        let heartbeatInterval;
+        
+        // Heartbeat - send every second to show browser is open
+        function startHeartbeat() {{
+            heartbeatInterval = setInterval(function() {{
+                fetch('/heartbeat', {{method: 'GET', keepalive: true}}).catch(() => {{}});
+            }}, 1000);
+        }}
+        
+        // On tab close send shutdown; server waits 3 s – if it was navigation, new page cancels
+        function stopAndShutdown() {{
+            if (heartbeatInterval) {{ clearInterval(heartbeatInterval); }}
+            navigator.sendBeacon('/shutdown');
+            fetch('/shutdown', {{method: 'POST', keepalive: true}}).catch(() => {{}});
+        }}
+        window.addEventListener('beforeunload', stopAndShutdown);
+        window.addEventListener('unload', stopAndShutdown);
+        window.addEventListener('pagehide', stopAndShutdown);
+        
+        // Start heartbeat after page load
+        if (document.readyState === 'loading') {{
+            document.addEventListener('DOMContentLoaded', startHeartbeat);
+        }} else {{
+            startHeartbeat();
+        }}
+    </script>
+    <style>
+        * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+        body {{
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f5f5f5;
+            color: #333;
+            padding: 20px;
+        }}
+        .header {{
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }}
+        .header h1 {{ font-size: 2em; margin-bottom: 10px; }}
+        .nav {{
+            margin-bottom: 20px;
+        }}
+        .nav a {{
+            color: white;
+            text-decoration: none;
+            padding: 10px 20px;
+            background: rgba(255,255,255,0.2);
+            border-radius: 5px;
+            display: inline-block;
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }}
+        .stats-grid {{
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 30px;
+        }}
+        .stat-card {{
+            background: white;
+            padding: 25px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            text-align: center;
+        }}
+        .stat-value {{
+            font-size: 3em;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }}
+        .stat-high {{ color: #f44336; }}
+        .stat-medium {{ color: #ff9800; }}
+        .stat-low {{ color: #4caf50; }}
+        .stat-label {{
+            color: #666;
+            font-size: 1.1em;
+        }}
+        .section {{
+            background: white;
+            padding: 25px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }}
+        .section h2 {{
+            margin-bottom: 20px;
+            color: #667eea;
+            border-bottom: 2px solid #667eea;
+            padding-bottom: 10px;
+        }}
+        .devices-grid {{
+            display: grid;
+            gap: 20px;
+        }}
+        .device-card {{
+            padding: 20px;
+            border-radius: 10px;
+            border-left: 4px solid #667eea;
+            background: #f8f9fa;
+        }}
+        .device-card.high-risk {{ border-left-color: #f44336; background: #ffebee; }}
+        .device-card.medium-risk {{ border-left-color: #ff9800; background: #fff3e0; }}
+        .device-card.low-risk {{ border-left-color: #4caf50; background: #e8f5e9; }}
+        .device-header {{
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }}
+        .device-name {{
+            font-size: 1.3em;
+            font-weight: bold;
+        }}
+        .device-score {{
+            padding: 8px 20px;
+            border-radius: 20px;
+            font-weight: bold;
+            font-size: 1.1em;
+        }}
+        .score-high {{ background: #f44336; color: white; }}
+        .score-medium {{ background: #ff9800; color: white; }}
+        .score-low {{ background: #4caf50; color: white; }}
+        .device-details {{
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 15px;
+        }}
+        .detail-item {{
+            padding: 10px;
+            background: white;
+            border-radius: 5px;
+        }}
+        .detail-label {{
+            font-size: 0.9em;
+            color: #666;
+            margin-bottom: 5px;
+        }}
+        .detail-value {{
+            font-weight: bold;
+            font-size: 1.1em;
+        }}
+        .vulns {{
+            margin-top: 15px;
+            padding: 15px;
+            background: #fff3cd;
+            border-radius: 5px;
+            border-left: 4px solid #ffc107;
+        }}
+        .vuln-item {{
+            margin: 8px 0;
+            color: #856404;
+            padding-left: 20px;
+        }}
+        .protocol-badge {{
+            display: inline-block;
+            padding: 5px 12px;
+            background: #667eea;
+            color: white;
+            border-radius: 15px;
+            font-size: 0.9em;
+            margin: 5px 5px 5px 0;
+        }}
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="nav">
+            <a href="/">🏠 Home</a>
+            <a href="/dashboard">📊 Full report</a>
+            <a href="/devices">📱 Devices</a>
+            <a href="/stats">📈 Statystyki</a>
+        </div>
+        <h1>📊 Full Scan Report</h1>
+        <p>Data: {summary.get('report_timestamp', 'N/A') if 'report_timestamp' in summary else full_data.get('scan_timestamp', 'N/A')}</p>
+    </div>
+    
+    <div class="stats-grid">
+        <div class="stat-card">
+            <div class="stat-value" style="color: #667eea;">{total}</div>
+            <div class="stat-label">All devices</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value stat-high">{high_risk}</div>
+            <div class="stat-label">Wysokie ryzyko</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value stat-medium">{medium_risk}</div>
+            <div class="stat-label">Medium risk</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value stat-low">{low_risk}</div>
+            <div class="stat-label">Niskie ryzyko</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value" style="color: #667eea;">{avg_score:.1f}</div>
+            <div class="stat-label">Average security score</div>
+        </div>
+    </div>
+    
+    <div class="section">
+        <h2>📡 Protocols</h2>
+        <div>
+"""
+    
+    for proto, count in protocols.items():
+        html += f'<span class="protocol-badge">{proto}: {count}</span>'
+    
+    html += """
+        </div>
+    </div>
+    
+    <div class="section">
+        <h2>📱 All Devices</h2>
+        <div class="devices-grid">
+"""
+    
+    for device in devices:
+        score = device.get('security_score', 0)
+        risk_class = 'high-risk' if score < 50 else 'medium-risk' if score < 80 else 'low-risk'
+        score_class = 'score-high' if score < 50 else 'score-medium' if score < 80 else 'score-low'
+        
+        vulns = device.get('vulnerabilities', [])
+        vulns_html = ""
+        if vulns:
+            vulns_html = '<div class="vulns"><strong>⚠️ Vulnerabilities (' + str(len(vulns)) + '):</strong>'
+            for vuln in vulns[:5]:
+                vulns_html += f'<div class="vuln-item">• {vuln}</div>'
+            if len(vulns) > 5:
+                vulns_html += f'<div class="vuln-item">... and {len(vulns) - 5} more</div>'
+            vulns_html += '</div>'
+        
+        # Mikrokontroler
+        microcontroller_info = ""
+        if device.get('metadata', {}).get('microcontroller'):
+            meta = device['metadata']
+            port = meta.get('port', 'N/A')
+            baudrate = meta.get('baudrate', 'N/A')
+            messages = meta.get('messages', [])
+            microcontroller_info = f"""
+            <div class="detail-item">
+                <div class="detail-label">🔧 Mikrokontroler</div>
+                <div class="detail-value">Port: {port} | {baudrate} baud | {len(messages)} messages</div>
+            </div>
+            """
+        
+        # AI Anomaly Detection
+        ai_info = ""
+        if device.get('metadata', {}).get('anomaly_detection'):
+            ai_data = device['metadata']['anomaly_detection']
+            if ai_data.get('is_anomaly'):
+                ai_info = f"""
+            <div class="detail-item" style="background: #ffebee;">
+                <div class="detail-label">🤖 AI: Wykryta anomalia</div>
+                <div class="detail-value" style="color: #c62828;">Score: {ai_data.get('anomaly_score', 0):.2f} | {ai_data.get('reason', 'N/A')}</div>
+            </div>
+            """
+        
+        html += f"""
+        <div class="device-card {risk_class}">
+            <div class="device-header">
+                <div class="device-name">{device.get('name', 'Unknown')}</div>
+                <div class="device-score {score_class}">{score}/100</div>
+            </div>
+            <div class="device-details">
+                <div class="detail-item">
+                    <div class="detail-label">MAC Address</div>
+                    <div class="detail-value">{device.get('mac_address', 'N/A')}</div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">Typ</div>
+                    <div class="detail-value">{device.get('device_type', 'unknown')}</div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">Protocol</div>
+                    <div class="detail-value">{device.get('protocol', 'N/A')}</div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">Szyfrowanie</div>
+                    <div class="detail-value">{'✅ Tak' if device.get('has_encryption') else '❌ Nie'}</div>
+                </div>
+                {microcontroller_info}
+                {ai_info}
+            </div>
+            {vulns_html}
+        </div>
+"""
+    
+    html += """
+        </div>
+    </div>
+</body>
+</html>"""
+    return html
+
+
+def render_stats_html(total: int, by_protocol: Dict, by_encryption: Dict, by_risk: Dict, encryption_strength: Dict) -> str:
+    """Render HTML UI with statistics."""
+    html = f"""<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Statystyki - Medical Device Scanner</title>
+    <script>
+        // Auto-close server when browser closes
+        let heartbeatInterval;
+        
+        // Heartbeat - send every second to show browser is open
+        function startHeartbeat() {{
+            heartbeatInterval = setInterval(function() {{
+                fetch('/heartbeat', {{method: 'GET', keepalive: true}}).catch(() => {{}});
+            }}, 1000);
+        }}
+        
+        // On tab close send shutdown; server waits 3 s – if it was navigation, new page cancels
+        function stopAndShutdown() {{
+            if (heartbeatInterval) {{ clearInterval(heartbeatInterval); }}
+            navigator.sendBeacon('/shutdown');
+            fetch('/shutdown', {{method: 'POST', keepalive: true}}).catch(() => {{}});
+        }}
+        window.addEventListener('beforeunload', stopAndShutdown);
+        window.addEventListener('unload', stopAndShutdown);
+        window.addEventListener('pagehide', stopAndShutdown);
+        
+        // Start heartbeat after page load
+        if (document.readyState === 'loading') {{
+            document.addEventListener('DOMContentLoaded', startHeartbeat);
+        }} else {{
+            startHeartbeat();
+        }}
+    </script>
+    <style>
+        * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+        body {{
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f5f5f5;
+            color: #333;
+            padding: 20px;
+        }}
+        .header {{
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }}
+        .header h1 {{ font-size: 2em; margin-bottom: 10px; }}
+        .nav a {{
+            color: white;
+            text-decoration: none;
+            padding: 10px 20px;
+            background: rgba(255,255,255,0.2);
+            border-radius: 5px;
+            display: inline-block;
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }}
+        .section {{
+            background: white;
+            padding: 25px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }}
+        .section h2 {{
+            margin-bottom: 20px;
+            color: #667eea;
+            border-bottom: 2px solid #667eea;
+            padding-bottom: 10px;
+        }}
+        .stats-grid {{
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+        }}
+        .stat-item {{
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            text-align: center;
+        }}
+        .stat-value {{
+            font-size: 2em;
+            font-weight: bold;
+            color: #667eea;
+        }}
+        .stat-label {{
+            color: #666;
+            margin-top: 5px;
+        }}
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="nav">
+            <a href="/">🏠 Home</a>
+            <a href="/dashboard">📊 Full report</a>
+            <a href="/devices">📱 Devices</a>
+        </div>
+        <h1>📈 Statystyki Skanowania</h1>
+    </div>
+    
+    <div class="section">
+        <h2>📊 Podsumowanie</h2>
+        <div class="stats-grid">
+            <div class="stat-item">
+                <div class="stat-value">{total}</div>
+                <div class="stat-label">All devices</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-value" style="color: #f44336;">{by_risk.get('high_risk', 0)}</div>
+                <div class="stat-label">Wysokie ryzyko</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-value" style="color: #ff9800;">{by_risk.get('medium_risk', 0)}</div>
+                <div class="stat-label">Medium risk</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-value" style="color: #4caf50;">{by_risk.get('low_risk', 0)}</div>
+                <div class="stat-label">Niskie ryzyko</div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="section">
+        <h2>📡 Protocols</h2>
+        <div class="stats-grid">
+"""
+    
+    for proto, count in by_protocol.items():
+        html += f"""
+            <div class="stat-item">
+                <div class="stat-value">{count}</div>
+                <div class="stat-label">{proto}</div>
+            </div>
+"""
+    
+    html += """
+        </div>
+    </div>
+    
+    <div class="section">
+        <h2>🔐 Szyfrowanie</h2>
+        <div class="stats-grid">
+            <div class="stat-item">
+                <div class="stat-value" style="color: #4caf50;">""" + str(by_encryption.get('with', 0)) + """</div>
+                <div class="stat-label">Z szyfrowaniem</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-value" style="color: #f44336;">""" + str(by_encryption.get('without', 0)) + """</div>
+                <div class="stat-label">Bez szyfrowania</div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>"""
+    return html
+
+
+def render_devices_html(devices: List[Dict], filters: Dict) -> str:
+    """Render HTML UI with device list."""
+    html = """<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Devices - Medical Device Scanner</title>
+    {% raw %}
+    <script>
+        // Auto-close server when browser closes
+        let heartbeatInterval;
+        
+        // Heartbeat - send every second to show browser is open
+        function startHeartbeat() {
+            heartbeatInterval = setInterval(function() {
+                fetch('/heartbeat', {method: 'GET', keepalive: true}).catch(function() {});
+            }, 1000);
+        }
+        
+        // On tab close send shutdown; server waits 3 s – if navigation, new page cancels
+        function stopAndShutdown() {
+            if (heartbeatInterval) { clearInterval(heartbeatInterval); }
+            navigator.sendBeacon('/shutdown');
+            fetch('/shutdown', {method: 'POST', keepalive: true}).catch(function() {});
+        }
+        window.addEventListener('beforeunload', stopAndShutdown);
+        window.addEventListener('unload', stopAndShutdown);
+        window.addEventListener('pagehide', stopAndShutdown);
+        
+        // Start heartbeat after page load
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', startHeartbeat);
+        } else {
+            startHeartbeat();
+        }
+    </script>
+    {% endraw %}
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f5f5f5;
+            color: #333;
+            padding: 20px;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+        .header h1 { font-size: 2em; margin-bottom: 10px; }
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        .stat-card {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .stat-value {
+            font-size: 2em;
+            font-weight: bold;
+            color: #667eea;
+        }
+        .stat-label {
+            color: #666;
+            margin-top: 5px;
+        }
+        .devices-grid {
+            display: grid;
+            gap: 20px;
+        }
+        .device-card {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            border-left: 4px solid #667eea;
+        }
+        .device-card.high-risk { border-left-color: #f44336; }
+        .device-card.medium-risk { border-left-color: #ff9800; }
+        .device-card.low-risk { border-left-color: #4caf50; }
+        .device-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        .device-name {
+            font-size: 1.3em;
+            font-weight: bold;
+        }
+        .device-score {
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-weight: bold;
+        }
+        .score-high { background: #ffebee; color: #c62828; }
+        .score-medium { background: #fff3e0; color: #e65100; }
+        .score-low { background: #e8f5e9; color: #2e7d32; }
+        .device-info {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 10px;
+            margin-top: 15px;
+        }
+        .info-item {
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 5px;
+        }
+        .info-label {
+            font-size: 0.9em;
+            color: #666;
+        }
+        .info-value {
+            font-weight: bold;
+            margin-top: 5px;
+        }
+        .vulns {
+            margin-top: 15px;
+            padding: 10px;
+            background: #fff3cd;
+            border-radius: 5px;
+        }
+        .vuln-item {
+            margin: 5px 0;
+            color: #856404;
+        }
+        .nav {
+            margin-bottom: 20px;
+        }
+        .nav a {
+            color: white;
+            text-decoration: none;
+            padding: 10px 20px;
+            background: rgba(255,255,255,0.2);
+            border-radius: 5px;
+            display: inline-block;
+            margin-right: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="nav">
+            <a href="/">🏠 Home</a>
+            <a href="/dashboard">📊 Full report</a>
+            <a href="/stats">📈 Statystyki</a>
+        </div>
+        <h1>📱 Detected Devices</h1>
+        <p>Found: """ + str(len(devices)) + """ devices</p>
+    </div>
+    
+    <div class="stats">
+        <div class="stat-card">
+            <div class="stat-value">""" + str(len(devices)) + """</div>
+            <div class="stat-label">All devices</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value">""" + str(len([d for d in devices if d.get('security_score', 100) < 50])) + """</div>
+            <div class="stat-label">Wysokie ryzyko</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value">""" + str(len([d for d in devices if d.get('has_encryption', False)])) + """</div>
+            <div class="stat-label">Z szyfrowaniem</div>
+        </div>
+    </div>
+    
+    <div class="devices-grid">
+"""
+    
+    for device in devices:
+        score = device.get('security_score', 0)
+        risk_class = 'high-risk' if score < 50 else 'medium-risk' if score < 80 else 'low-risk'
+        score_class = 'score-high' if score < 50 else 'score-medium' if score < 80 else 'score-low'
+        
+        vulns = device.get('vulnerabilities', [])
+        vulns_html = ""
+        if vulns:
+            vulns_html = '<div class="vulns"><strong>⚠️ Vulnerabilities:</strong>'
+            for vuln in vulns[:5]:
+                vulns_html += f'<div class="vuln-item">• {vuln}</div>'
+            if len(vulns) > 5:
+                vulns_html += f'<div class="vuln-item">... and {len(vulns) - 5} more</div>'
+            vulns_html += '</div>'
+        
+        # Mikrokontroler info
+        microcontroller_info = ""
+        if device.get('metadata', {}).get('microcontroller'):
+            meta = device['metadata']
+            port = meta.get('port', 'N/A')
+            baudrate = meta.get('baudrate', 'N/A')
+            messages = meta.get('messages', [])
+            microcontroller_info = f"""
+            <div class="info-item">
+                <div class="info-label">🔧 Mikrokontroler</div>
+                <div class="info-value">Port: {port} | {baudrate} baud | {len(messages)} messages</div>
+            </div>
+            """
+        
+        html += f"""
+        <div class="device-card {risk_class}">
+            <div class="device-header">
+                <div class="device-name">{device.get('name', 'Unknown')}</div>
+                <div class="device-score {score_class}">{score}/100</div>
+            </div>
+            <div class="device-info">
+                <div class="info-item">
+                    <div class="info-label">MAC Address</div>
+                    <div class="info-value">{device.get('mac_address', 'N/A')}</div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">Typ</div>
+                    <div class="info-value">{device.get('device_type', 'unknown')}</div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">Protocol</div>
+                    <div class="info-value">{device.get('protocol', 'N/A')}</div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">Szyfrowanie</div>
+                    <div class="info-value">{'✅ Tak' if device.get('has_encryption') else '❌ Nie'}</div>
+                </div>
+                {microcontroller_info}
+            </div>
+            {vulns_html}
+        </div>
+"""
+    
+    html += """
+    </div>
+</body>
+</html>"""
+    return html
+
+
+def simplify_device(device: Dict, detailed: bool = False) -> Dict:
+    """Simplify device – remove unnecessary details."""
+    simplified = {
+        'name': device.get('name', 'Unknown'),
+        'mac_address': device.get('mac_address', ''),
+        'device_type': device.get('device_type', 'unknown'),
+        'protocol': device.get('protocol', ''),
+        'security_score': device.get('security_score', 0),
+        'has_encryption': device.get('has_encryption', False),
+        'encryption_type': device.get('encryption_type', 'N/A'),
+        'vulnerability_count': len(device.get('vulnerabilities', []))
+    }
+    
+    if detailed:
+        simplified.update({
+            'manufacturer': device.get('manufacturer'),
+            'model': device.get('model'),
+            'firmware_version': device.get('firmware_version'),
+            'requires_pairing': device.get('requires_pairing', False),
+            'rssi': device.get('rssi'),
+            'vulnerabilities': device.get('vulnerabilities', []),
+            'metadata': {
+                'encryption_analysis': device.get('metadata', {}).get('encryption_analysis'),
+                'fda_compliance': device.get('metadata', {}).get('fda_compliance'),
+                'ip_address': device.get('metadata', {}).get('ip_address')
+            }
+        })
+    
+    return simplified
+
+
+# Global flag for shutdown control – used by scanner.py
+import threading
+import time
+shutdown_event = threading.Event()
+last_request_time = time.time()  # Czas ostatniego requestu (heartbeat)
+shutdown_timer = None  # Timer: shutdown 3 s after /shutdown, cancelled if request arrives (navigation)
+
+if FLASK_AVAILABLE and app:
+    # Track last request time (heartbeat)
+    import time
+    last_request_time = time.time()
+    
+    def _do_shutdown():
+        global shutdown_timer
+        shutdown_timer = None
+        shutdown_event.set()
+    
+    @app.route('/shutdown', methods=['POST', 'GET'])
+    def shutdown():
+        """Shutdown request – wait 3 s; if a request arrives (e.g. new page), cancel."""
+        global shutdown_timer, last_request_time
+        last_request_time = time.time()
+        if shutdown_timer:
+            shutdown_timer.cancel()
+        shutdown_timer = threading.Timer(3.0, _do_shutdown)
+        shutdown_timer.daemon = True
+        shutdown_timer.start()
+        return 'Server will shut down in 3s unless new page loads...', 200
+    
+    @app.route('/heartbeat', methods=['GET', 'POST'])
+    def heartbeat():
+        """Heartbeat – browser sends every second to show it is open."""
+        global last_request_time, shutdown_timer
+        last_request_time = time.time()
+        if shutdown_timer:
+            shutdown_timer.cancel()
+            shutdown_timer = None
+        return 'OK', 200
+    
+    @app.before_request
+    def update_last_request():
+        """Cancel scheduled shutdown on every request (e.g. navigation = new page)."""
+        global last_request_time, shutdown_timer
+        last_request_time = time.time()
+        if shutdown_timer:
+            try:
+                shutdown_timer.cancel()
+            except Exception:
+                pass
+            shutdown_timer = None
+    
+    @app.route('/')
+    def index():
+        """API home – navigation menu."""
+        # Check if client wants JSON (e.g. curl, Postman)
+        if request.headers.get('Accept', '').startswith('application/json'):
+            return jsonify({
+                'name': 'Medical Device Security Scanner API',
+                'version': '1.0',
+                'endpoints': {
+                    '/dashboard': 'Full report (HTML)',
+                    '/devices': 'Device list (HTML/JSON)',
+                    '/stats': 'Statystyki (HTML/JSON)'
+                }
+            })
+        
+        # Check if data exists
+        data = load_latest_data()
+        has_data = bool(data)
+        
+        # Show start page with nav menu
+        # Return HTML for browser
+        html_template = """<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Medical Device Security Scanner API</title>
+    {% raw %}
+    <script>
+        // Auto-close server when browser closes
+        let heartbeatInterval;
+        
+        // Heartbeat - send every second to show browser is open
+        function startHeartbeat() {
+            heartbeatInterval = setInterval(function() {
+                fetch('/heartbeat', {method: 'GET', keepalive: true}).catch(function() {});
+            }, 1000);
+        }
+        
+        // On tab close send shutdown; server waits 3 s – if navigation, new page cancels
+        function stopAndShutdown() {
+            if (heartbeatInterval) { clearInterval(heartbeatInterval); }
+            navigator.sendBeacon('/shutdown');
+            fetch('/shutdown', {method: 'POST', keepalive: true}).catch(function() {});
+        }
+        window.addEventListener('beforeunload', stopAndShutdown);
+        window.addEventListener('unload', stopAndShutdown);
+        window.addEventListener('pagehide', stopAndShutdown);
+        
+        // Start heartbeat after page load
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', startHeartbeat);
+        } else {
+            startHeartbeat();
+        }
+    </script>
+    {% endraw %}
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #333;
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 40px;
+            text-align: center;
+        }
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+        .header p {
+            opacity: 0.9;
+            font-size: 1.1em;
+        }
+        .content {
+            padding: 40px;
+        }
+        .endpoints {
+            display: grid;
+            gap: 20px;
+            margin-top: 30px;
+        }
+        .endpoint {
+            background: #f8f9fa;
+            border-left: 4px solid #667eea;
+            padding: 20px;
+            border-radius: 8px;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .endpoint:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+        .endpoint-method {
+            display: inline-block;
+            background: #667eea;
+            color: white;
+            padding: 4px 12px;
+            border-radius: 4px;
+            font-weight: bold;
+            font-size: 0.9em;
+            margin-right: 10px;
+        }
+        .endpoint-path {
+            font-family: 'Courier New', monospace;
+            font-size: 1.1em;
+            color: #333;
+            font-weight: bold;
+        }
+        .endpoint-desc {
+            margin-top: 10px;
+            color: #666;
+        }
+        .test-btn {
+            display: inline-block;
+            margin-top: 10px;
+            padding: 8px 16px;
+            background: #667eea;
+            color: white;
+            text-decoration: none;
+            border-radius: 6px;
+            font-size: 0.9em;
+            transition: background 0.2s;
+        }
+        .test-btn:hover {
+            background: #5568d3;
+        }
+        .info-box {
+            background: #e3f2fd;
+            border-left: 4px solid #2196f3;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 30px;
+        }
+        .info-box h3 {
+            color: #1976d2;
+            margin-bottom: 10px;
+        }
+        .status {
+            display: inline-block;
+            padding: 6px 12px;
+            background: #4caf50;
+            color: white;
+            border-radius: 20px;
+            font-size: 0.9em;
+            margin-top: 10px;
+        }
+        @media (max-width: 768px) {
+            .header h1 { font-size: 1.8em; }
+            .content { padding: 20px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🏥 Medical Device Security Scanner</h1>
+            <p>API v1.0</p>
+            <span class="status">● Online</span>
+        </div>
+        <div class="content">
+            <div class="info-box">
+                <h3>ℹ️ About API</h3>
+                <p>REST API for scanning and security analysis of IoT medical devices. 
+                Detects devices using BLE, WiFi, USB and NFC and analyzes their security.</p>
+            </div>
+            
+            <h2>📡 Available Endpoints</h2>
+            <div class="endpoints">
+                <div class="endpoint">
+                    <span class="endpoint-method">📊</span>
+                    <span class="endpoint-path">/dashboard</span>
+                    <div class="endpoint-desc">
+                        Full graphical scan report – all devices, stats, charts.
+                        <br>
+                        <a href="/dashboard" class="test-btn">Open report →</a>
+                    </div>
+                </div>
+                
+                <div class="endpoint">
+                    <span class="endpoint-method">📱</span>
+                    <span class="endpoint-path">/devices</span>
+                    <div class="endpoint-desc">
+                        List of all detected medical devices with filtering.
+                        <br>
+                        <a href="/devices" class="test-btn">View devices →</a>
+                    </div>
+                </div>
+                
+                <div class="endpoint">
+                    <span class="endpoint-method">📈</span>
+                    <span class="endpoint-path">/stats</span>
+                    <div class="endpoint-desc">
+                        Scan statistics (device count, protocols, security).
+                        <br>
+                        <a href="/stats" class="test-btn">View stats →</a>
+                    </div>
+                </div>
+            </div>
+            
+            <div style="margin-top: 40px; padding-top: 20px; border-top: 1px solid #eee;">
+                <h2 style="margin-bottom: 20px;">🚀 Szybka Nawigacja</h2>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
+                    <a href="/dashboard" style="display: block; padding: 20px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; text-decoration: none; border-radius: 10px; text-align: center; font-weight: bold; transition: transform 0.2s;">
+                        📊 Full Report
+                    </a>
+                    <a href="/devices" style="display: block; padding: 20px; background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white; text-decoration: none; border-radius: 10px; text-align: center; font-weight: bold; transition: transform 0.2s;">
+                        📱 Devices
+                    </a>
+                    <a href="/stats" style="display: block; padding: 20px; background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); color: white; text-decoration: none; border-radius: 10px; text-align: center; font-weight: bold; transition: transform 0.2s;">
+                        📈 Statystyki
+                    </a>
+                </div>
+            </div>
+            <!-- STATUS_MESSAGE_PLACEHOLDER -->
+        </div>
+    </div>
+</body>
+</html>"""
+        
+        # Dodaj status danych
+        if has_data:
+            status_message = """
+            <div style="margin-top: 30px; padding: 20px; background: #e8f5e9; border-left: 4px solid #4caf50; border-radius: 8px;">
+                <h3 style="color: #2e7d32; margin-bottom: 10px;">✅ Data available</h3>
+                <p style="color: #388e3c;">Scan results found. Click above to see details.</p>
+            </div>
+            """
+        else:
+            status_message = """
+            <div style="margin-top: 30px; padding: 20px; background: #fff3e0; border-left: 4px solid #ff9800; border-radius: 8px;">
+                <h3 style="color: #e65100; margin-bottom: 10px;">⚠️ Brak danych</h3>
+                <p style="color: #f57c00;">No scan results found. Run a scan first:</p>
+                <code style="display: block; margin-top: 10px; padding: 10px; background: #f5f5f5; border-radius: 4px;">python3 src/scanner.py</code>
+            </div>
+            """
+        
+        # Use replace instead of format to avoid curly-brace issues in JavaScript
+        html_template = html_template.replace('<!-- STATUS_MESSAGE_PLACEHOLDER -->', status_message)
+        return render_template_string(html_template)
+    
+    @app.route('/devices', methods=['GET'])
+    def get_devices():
+        """Get device list – HTML for browser, JSON for API."""
+        # Check if client wants JSON
+        wants_json = request.headers.get('Accept', '').startswith('application/json') or request.args.get('format') == 'json'
+        
+        # Wczytaj najnowsze dane
+        data = load_latest_data()
+        if not data:
+            if wants_json:
+                return json_response({'error': 'No data available'}, pretty=True), 404
+            return render_template_string("""
+                <html><head><title>Brak danych</title></head>
+                <body style="font-family: sans-serif; padding: 40px; text-align: center;">
+                    <h1>⚠️ Brak danych</h1>
+                    <p>No scan results found.</p>
+                    <p><a href="/">← Back</a></p>
+                </body></html>
+            """), 404
+        
+        devices = data.get('devices', [])
+        
+        # Zastosuj filtry
+        filters = request.args.to_dict()
+        filtered_devices = filter_devices(devices, filters)
+        
+        # If JSON – return JSON
+        if wants_json:
+            detailed = filters.get('detailed', 'false').lower() == 'true'
+            simplified = [simplify_device(d, detailed=detailed) for d in filtered_devices]
+            return json_response({'devices': simplified}, pretty=True)
+        
+        # HTML – return graphical UI
+        return render_devices_html(filtered_devices, filters)
+    
+    @app.route('/devices/<mac>', methods=['GET'])
+    def get_device(mac: str):
+        """Get device details by MAC address."""
+        data = load_latest_data()
+        if not data:
+            pretty = request.args.get('pretty', 'false').lower() == 'true'
+            return json_response({'error': 'No data available'}, pretty=pretty), 404
+        
+        devices = data.get('devices', [])
+        device = next((d for d in devices if d.get('mac_address', '').upper() == mac.upper()), None)
+        
+        if not device:
+            pretty = request.args.get('pretty', 'false').lower() == 'true'
+            return json_response({'error': 'Device not found'}, pretty=pretty), 404
+        
+        pretty = request.args.get('pretty', 'false').lower() == 'true'
+        return json_response(simplify_device(device, detailed=True), pretty=pretty)
+    
+    @app.route('/report', methods=['GET'])
+    def get_report():
+        """Get latest report – HTML for browser."""
+        wants_json = request.headers.get('Accept', '').startswith('application/json') or request.args.get('format') == 'json'
+        
+        report = load_latest_report()
+        if not report:
+            if wants_json:
+                return json_response({'error': 'No report available'}, pretty=True), 404
+            return render_template_string("""
+                <html><head><title>Brak raportu</title></head>
+                <body style="font-family: sans-serif; padding: 40px; text-align: center;">
+                    <h1>⚠️ Brak raportu</h1>
+                    <p>No report found. Run a scan first.</p>
+                    <p><a href="/">← Back</a></p>
+                </body></html>
+            """), 404
+        
+        if wants_json:
+            return json_response(report, pretty=True)
+        
+        # HTML – redirect to dashboard
+        from flask import redirect
+        return redirect('/dashboard')
+    
+    @app.route('/scan', methods=['GET'])
+    def get_scan():
+        """Get latest scan – HTML for browser."""
+        wants_json = request.headers.get('Accept', '').startswith('application/json') or request.args.get('format') == 'json'
+        
+        scan = load_latest_scan()
+        if not scan:
+            if wants_json:
+                return json_response({'error': 'No scan available'}, pretty=True), 404
+            return render_template_string("""
+                <html><head><title>Brak skanu</title></head>
+                <body style="font-family: sans-serif; padding: 40px; text-align: center;">
+                    <h1>⚠️ Brak skanu</h1>
+                    <p>No scan found. Run a scan first.</p>
+                    <p><a href="/">← Back</a></p>
+                </body></html>
+            """), 404
+        
+        if wants_json:
+            return json_response(scan, pretty=True)
+        
+        # HTML – redirect to dashboard
+        from flask import redirect
+        return redirect('/dashboard')
+    
+    @app.route('/dashboard', methods=['GET'])
+    def dashboard():
+        """Full graphical dashboard with report."""
+        data = load_latest_data()
+        if not data:
+            return render_template_string("""
+                <html><head><title>Brak danych</title></head>
+                <body style="font-family: sans-serif; padding: 40px; text-align: center;">
+                    <h1>⚠️ No data</h1>
+                    <p>No scan results found.</p>
+                    <p>Run: <code>python3 src/scanner.py</code></p>
+                    <p><a href="/">← Back</a></p>
+                </body></html>
+            """), 404
+        
+        devices = data.get('devices', [])
+        summary = data.get('summary', {})
+        
+        return render_dashboard_html(devices, summary, data)
+    
+    @app.route('/stats', methods=['GET'])
+    def get_stats():
+        """Get statistics – HTML for browser."""
+        wants_json = request.headers.get('Accept', '').startswith('application/json') or request.args.get('format') == 'json'
+        
+        data = load_latest_data()
+        if not data:
+            if wants_json:
+                return jsonify({'error': 'No data available'}), 404
+            return render_template_string("""
+                <html><head><title>Brak danych</title></head>
+                <body style="font-family: sans-serif; padding: 40px; text-align: center;">
+                    <h1>⚠️ Brak danych</h1>
+                    <p><a href="/">← Back</a></p>
+                </body></html>
+            """), 404
+        
+        devices = data.get('devices', [])
+        
+        # Statystyki
+        total = len(devices)
+        by_protocol = {}
+        by_encryption = {'with': 0, 'without': 0}
+        by_score = {'high_risk': 0, 'medium_risk': 0, 'low_risk': 0}
+        encryption_strength = {'strong': 0, 'moderate': 0, 'weak': 0, 'none': 0}
+        
+        for device in devices:
+            # By protocol (may be object or string)
+            protocol = device.get('protocol', 'unknown')
+            if isinstance(protocol, dict):
+                protocol = protocol.get('value', protocol.get('name', 'unknown'))
+            elif hasattr(protocol, 'value'):
+                protocol = protocol.value
+            protocol_str = str(protocol).upper() if protocol else 'UNKNOWN'
+            by_protocol[protocol_str] = by_protocol.get(protocol_str, 0) + 1
+            
+            # Po szyfrowaniu
+            if device.get('has_encryption', False):
+                by_encryption['with'] += 1
+            else:
+                by_encryption['without'] += 1
+            
+            # Po security score
+            score = device.get('security_score', 0)
+            if score < 50:
+                by_score['high_risk'] += 1
+            elif score < 80:
+                by_score['medium_risk'] += 1
+            else:
+                by_score['low_risk'] += 1
+            
+            # Po sile szyfrowania
+            enc_analysis = device.get('metadata', {}).get('encryption_analysis', {})
+            if enc_analysis:
+                strength = enc_analysis.get('strength', 'unknown')
+                if strength in encryption_strength:
+                    encryption_strength[strength] += 1
+        
+        if wants_json:
+            return json_response({
+                'total_devices': total,
+                'by_protocol': by_protocol,
+                'by_encryption': by_encryption,
+                'by_risk': by_score,
+                'encryption_strength': encryption_strength
+            }, pretty=True)
+        
+        # HTML – return graphical UI
+        return render_stats_html(total, by_protocol, by_encryption, by_score, encryption_strength)
+
+
+def main():
+    """Start the API server."""
+    if not FLASK_AVAILABLE:
+        console.print("[red]❌ Flask is not installed![/red]")
+        console.print("[yellow]   Install: pip install flask[/yellow]")
+        sys.exit(1)
+    
+    # Parse arguments
+    port = 5000
+    if len(sys.argv) > 1:
+        if '--port' in sys.argv:
+            idx = sys.argv.index('--port')
+            if idx + 1 < len(sys.argv):
+                try:
+                    port = int(sys.argv[idx + 1])
+                except ValueError:
+                    console.print("[red]❌ Invalid port[/red]")
+                    sys.exit(1)
+        elif sys.argv[1] == '--help' or sys.argv[1] == '-h':
+            console.print("[cyan]Usage:[/cyan]")
+            console.print("  python src/api_server.py              # Port 5000")
+            console.print("  python src/api_server.py --port 8080   # Port 8080")
+            sys.exit(0)
+    
+    console.print(Panel.fit(
+        "[bold cyan]🌐 Medical Device Scanner API Server[/bold cyan]\n"
+        f"[dim]Running on http://localhost:{port}[/dim]",
+        style="cyan"
+    ))
+    console.print()
+    console.print("[green]✅ API Server started![/green]")
+    console.print(f"[dim]Endpoints:[/dim]")
+    console.print(f"  [cyan]GET[/cyan] http://localhost:{port}/")
+    console.print(f"  [cyan]GET[/cyan] http://localhost:{port}/devices")
+    console.print(f"  [cyan]GET[/cyan] http://localhost:{port}/devices/<mac>")
+    console.print(f"  [cyan]GET[/cyan] http://localhost:{port}/report")
+    console.print(f"  [cyan]GET[/cyan] http://localhost:{port}/scan")
+    console.print(f"  [cyan]GET[/cyan] http://localhost:{port}/stats")
+    console.print()
+    console.print("[yellow]Press Ctrl+C to stop[/yellow]")
+    console.print()
+    
+    app.run(host='0.0.0.0', port=port, debug=False)
+
+
+if __name__ == "__main__":
+    main()

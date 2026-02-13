@@ -1,0 +1,52 @@
+# Core dependencies
+python-dotenv>=1.0.0
+
+# Bluetooth scanning (for real devices)
+bleak>=0.21.0  # BLE scanning library (Linux/Windows/Mac)
+# pybluez removed – no longer maintained, issues with newer Python versions
+
+# Network scanning (WiFi)
+scapy>=2.5.0
+python-nmap>=0.7.1  # WiFi network scanning
+
+# USB scanning
+pyusb>=1.2.1  # USB device scanning
+pyserial>=3.5  # Serial port (COM) scanning
+
+# NFC scanning
+nfcpy>=1.0.4  # NFC device scanning (requires NFC reader)
+# pyscard>=2.0.0  # Optional – requires system PCSC libs (sudo apt-get install libpcsclite-dev)
+
+# Data processing
+pandas>=2.0.0
+numpy>=1.24.0
+
+# AI/ML
+scikit-learn>=1.3.0
+tensorflow>=2.13.0  # Optional – Deep Learning (Autoencoder)
+
+# Dashboard
+streamlit>=1.28.0
+plotly>=5.17.0
+
+# Backend (Weekend 3)
+flask>=3.0.0
+flask-cors>=4.0.0
+gunicorn>=21.2.0  # Production WSGI server
+
+# Database
+sqlalchemy>=2.0.0
+
+# Reporting (Weekend 3)
+reportlab>=4.0.0
+matplotlib>=3.7.0
+
+# Utilities
+pydantic>=2.0.0
+rich>=13.0.0
+requests>=2.31.0  # HTTP requests for CVE API
+mac-vendor-lookup>=0.1.12  # Vendor identification by MAC address (OUI)
+
+# Scheduling and Monitoring
+APScheduler>=3.10.0  # Scheduled scans (cron-like)
+schedule>=1.2.0  # Alternative scheduling (lighter)
