@@ -18,6 +18,12 @@ python3 src/scanner.py --ble --wifi --audit
 
 Bez `--ble`/`--wifi` skaner wybiera protokoły automatycznie. Można dodać `--usb`, `--nfc`.
 
+**Skan BLE – zmienność liczby urządzeń:** Wyniki BLE bywają różne (raz więcej, raz mniej urządzeń), bo urządzenia reklamują się w różnych odstępach czasu, a skan trwa ograniczoną liczbę sekund. Domyślnie skan BLE trwa **20 s**. Jeśli wykrywasz za mało urządzeń, wydłuż skan: `--ble-duration 30` lub `--ble-duration 45`. Jeśli pojawia się „za dużo” urządzeń, część może używać rotujących adresów MAC (to samo urządzenie widziane jako kilka).
+
+| Flaga | Znaczenie |
+|-------|-----------|
+| `--ble-duration SEC` | Czas skanowania BLE w sekundach (domyślnie 20) |
+
 ### Przegląd wyników (API w przeglądarce)
 ```bash
 python3 src/scanner.py --ble --wifi --api
