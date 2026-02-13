@@ -334,14 +334,7 @@ Po rozwiązaniu konfliktu (rebase), teraz możesz normalnie pracować z wielu ur
 
 ### 🔄 Prawidłowy Workflow dla Wiele Urządzeń
 
-**Zawsze przed rozpoczęciem pracy (na KAŻDYM urządzeniu):**
-```bash
-# 1. Pobierz najnowsze zmiany z GitHub
-git pull origin main
-
-# 2. Sprawdź status
-git status
-```
+**Pamiętaj:** Na **każdym** urządzeniu (Pi, PC, laptop) **przed** rozpoczęciem pracy zrób `git pull origin main`. Jeśli zapomnisz i pojawią się błędy przy push – użyj komend z sekcji **[Komendy w razie problemów](#-komendy-w-razie-problemów)** poniżej.
 
 **Podczas pracy:**
 ```bash
@@ -444,6 +437,85 @@ git push origin main
 2. **Używaj rebase** - zachowuje czystą historię
 3. **Commit często** - małe commity są lepsze niż duże
 4. **Sprawdzaj status** - `git status` przed każdym pull/push
+
+---
+
+## 🆘 Komendy w razie problemów
+
+Gdy `git push` się wywala albo `git pull` prosi o „reconcile” lub zgłasza konflikty – poniższe kroki zwykle wystarczą.
+
+### 1. Push odrzucony: „updates were rejected” / „non-fast-forward”
+
+Remote ma commity, których nie masz lokalnie. Najpierw pobierz, potem push.
+
+```bash
+# Ustaw merge (nie rebase) przy pull, żeby Git nie pytał
+git config pull.rebase false
+
+# Pobierz zmiany z GitHub i połącz (merge)
+git pull origin main
+
+# Wypchnij
+git push origin main
+```
+
+### 2. Pull mówi: „You have unmerged files” / „divergent branches”
+
+Merge jest w toku i są konflikty. Zobacz, które pliki:
+
+```bash
+git status
+```
+
+**Szybkie rozwiązanie – zostaw swoją wersję w skonfliktowanym pliku:**
+
+```bash
+# Zamień PLIK na ścieżkę z "Unmerged paths", np. src/scanner.py
+git checkout --ours PLIK
+git add PLIK
+git commit -m "Merge origin/main - rozwiązanie konfliktu"
+git push origin main
+```
+
+**Ręczne rozwiązanie:** Otwórz plik, znajdź `<<<<<<<`, `=======`, `>>>>>>>`, zostaw właściwą treść, usuń znaczniki. Potem:
+
+```bash
+git add .
+git commit -m "Merge origin/main - rozwiązane konflikty"
+git push origin main
+```
+
+### 3. Rebase się wywalił („Could not apply …”) lub chcesz go przerwać
+
+```bash
+git rebase --abort
+git config pull.rebase false
+git pull origin main
+git push origin main
+```
+
+### 4. Masz niezapisane zmiany, a pull/rebase nie wchodzi
+
+Git wymaga czystego katalogu. Albo zapisz zmiany w commicie, albo schowaj je.
+
+```bash
+# Opcja A: zapisz w commicie
+git add .
+git commit -m "WIP: zmiany przed pull"
+git pull origin main
+git push origin main
+
+# Opcja B: schowaj na chwilę (stash)
+git stash
+git pull origin main
+git push origin main
+git stash pop
+```
+
+### 5. Hasło do GitHub (HTTPS)
+
+Przy „Password for 'https://github.com'” **nie używaj hasła do konta** – GitHub wymaga **Personal Access Token (PAT)**.  
+GitHub → Settings → Developer settings → Personal access tokens → Generate. Wklej token jako hasło.
 
 ---
 

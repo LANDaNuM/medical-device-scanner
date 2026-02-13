@@ -260,7 +260,10 @@ class RealBLEScanner:
         console.print(f"[cyan]🔍 Rozpoczynam skanowanie BLE ({duration}s)...[/cyan]")
         console.print("[dim]Skanuję rzeczywiste urządzenia Bluetooth w zasięgu...[/dim]")
         console.print("[dim]💡 Fizyczne urządzenie: Adapter Bluetooth w laptopie[/dim]")
-        console.print("[dim]💡 Wykrywam tylko urządzenia w zasięgu (RSSI > -90 dBm)[/dim]\n")
+        console.print("[dim]💡 Wykrywam tylko urządzenia w zasięgu (RSSI > -90 dBm)[/dim]")
+        if duration < 15:
+            console.print("[dim]💡 Dłuższy skan (--ble-duration 20–30) pomaga wykryć urządzenia reklamujące się rzadziej.[/dim]")
+        console.print()
         
         devices: List[Device] = []
         # Set (zbiór) przechowuje unikalne adresy MAC, aby uniknąć duplikatów
@@ -341,22 +344,20 @@ class RealBLEScanner:
             console.print("[dim]ℹ️  Błędy połączenia są normalne - większość urządzeń wymaga parowania (to jest bezpieczne!)[/dim]\n")
             
             # Filtruj urządzenia na podstawie RSSI (tylko te w zasięgu)
-            # RSSI < -90 dBm oznacza bardzo słaby sygnał (urządzenie daleko lub nieaktywne)
-            # RSSI > -90 dBm oznacza urządzenie w zasięgu
+            # RSSI > -95 dBm = w rozsądnym zasięgu (-90 było zbyt restrykcyjne dla części adapterów)
+            # Brak RSSI = zaakceptuj (niektóre stosy nie podają RSSI w callbacku)
             filtered_addresses = []
             for address in discovered_devices:
                 ad_data = self.advertisement_data.get(address)
-                if ad_data and ad_data.rssi:
-                    # Tylko urządzenia z RSSI > -90 dBm (w zasięgu)
-                    if ad_data.rssi > -90:
+                if ad_data and ad_data.rssi is not None:
+                    if ad_data.rssi > -95:
                         filtered_addresses.append(address)
                 else:
-                    # Jeśli nie ma RSSI, zaakceptuj (może być dostępne później)
                     filtered_addresses.append(address)
             
             # Jeśli przefiltrowano urządzenia, wyświetl informację
             if len(discovered_devices) > len(filtered_addresses):
-                console.print(f"[dim]   Pominięto {len(discovered_devices) - len(filtered_addresses)} urządzeń poza zasięgiem (RSSI < -90 dBm)[/dim]\n")
+                console.print(f"[dim]   Pominięto {len(discovered_devices) - len(filtered_addresses)} urządzeń poza zasięgiem (RSSI ≤ -95 dBm)[/dim]\n")
             
             with Progress(
                 SpinnerColumn(),

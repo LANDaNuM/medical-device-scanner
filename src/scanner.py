@@ -289,9 +289,12 @@ class MedicalDeviceScanner:
         else:
             self.anomaly_detector = None
     
-    def scan_all(self) -> List[Device]:
+    def scan_all(self, ble_duration: Optional[int] = None) -> List[Device]:
         """
         Skanuje wszystkie dostępne protokoły (BLE, WiFi, USB, NFC).
+        
+        Args:
+            ble_duration: Czas skanowania BLE w sekundach (None = domyślny z argumentu --ble-duration lub 20)
         
         Returns:
             Lista wszystkich wykrytych urządzeń
@@ -299,11 +302,12 @@ class MedicalDeviceScanner:
         console.print("[bold blue]🔍 Rozpoczynam kompleksowe skanowanie...[/bold blue]\n")
         
         all_devices = []
+        _ble_sec = 20 if ble_duration is None else ble_duration
         
         # Skanuj BLE
         if 'ble' in self.scanners:
             console.print(Panel.fit("📡 Skanowanie Bluetooth Low Energy (BLE)", style="cyan"))
-            ble_devices = self._scan_ble_async(duration=10)
+            ble_devices = self._scan_ble_async(duration=_ble_sec)
             all_devices.extend(ble_devices)
             console.print()
         
@@ -1847,6 +1851,7 @@ def main():
     parser.add_argument('--monitor', action='store_true', help='Uruchom monitoring w czasie rzeczywistym')
     parser.add_argument('--interval', type=int, default=300, help='Interwał monitoringu w sekundach (domyślnie 300 = 5 minut)')
     parser.add_argument('--report-email', metavar='ADR', default=None, help='Po zakończeniu skanowania wyślij raport (combined_report) emailem (SMTP z .env, jak ESP32)')
+    parser.add_argument('--ble-duration', type=int, default=20, metavar='SEC', help='Czas skanowania BLE w sekundach (domyślnie 20; wyższa wartość = więcej szans na wykrycie wolno reklamujących się urządzeń)')
     
 
     args = parser.parse_args()
@@ -1880,8 +1885,8 @@ def main():
     # Utwórz skaner
     scanner = MedicalDeviceScanner(protocols=protocols)
     
-    # Skanuj urządzenia
-    devices = scanner.scan_all()
+    # Skanuj urządzenia (ble_duration z flagi --ble-duration)
+    devices = scanner.scan_all(ble_duration=getattr(args, 'ble_duration', 20))
     
     # Sprawdź czy znaleziono urządzenia
     if not devices:
@@ -2015,8 +2020,8 @@ def main():
             # Utwórz nowy skaner
             scan_scanner = MedicalDeviceScanner(protocols=protocols)
             
-            # Skanuj
-            scan_devices = scan_scanner.scan_all()
+            # Skanuj (ble_duration z flagi --ble-duration)
+            scan_devices = scan_scanner.scan_all(ble_duration=getattr(args, 'ble_duration', 20))
             
             if scan_devices:
                 # Analizuj
