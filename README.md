@@ -69,6 +69,8 @@ See `requirements.txt`. For flags and options, run `python src/scanner.py --help
 - `src/vulnerability_tester.py` – audit and port checks
 - `scripts/` – ESP32 reader, setup and test scripts
 - `exports/` – generated reports (gitignored)
+## Testy
+pytest tests/ -v
 
 ## License
 
