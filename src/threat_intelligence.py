@@ -1,16 +1,6 @@
 #!/usr/bin/env python3
 """
-Moduł Threat Intelligence - sprawdzanie IP w bazach zagrożeń.
-
-Obsługuje:
-- AbuseIPDB API (darmowe, 1000 requestów/dzień)
-- Integracja z istniejącym VirusTotal/Shodan
-- Cache wyników (nie obciąża API)
-- Asynchroniczne sprawdzanie (nie blokuje skanowania)
-
-UŻYCIE:
-    ti = ThreatIntelligence()
-    result = ti.check_ip("192.168.1.1")
+Threat Intelligence: check IPs against threat DBs (AbuseIPDB, VirusTotal, Shodan). Uses cache. Usage: ThreatIntelligence().check_ip("192.168.1.1")
 """
 
 import os
@@ -49,18 +39,10 @@ THREAT_CACHE = CACHE_DIR / "threat_intel_cache.json"
 
 
 class ThreatIntelligence:
-    """
-    Klasa do sprawdzania IP w bazach threat intelligence.
-    
-    Używa:
-    - AbuseIPDB (darmowe, 1000 req/dzień)
-    - VirusTotal (jeśli dostępne)
-    - Shodan (jeśli dostępne)
-    - Cache (nie obciąża API)
-    """
+    """Check IPs against AbuseIPDB, VirusTotal, Shodan; uses cache."""
     
     def __init__(self):
-        """Inicjalizacja Threat Intelligence."""
+        """Initialize Threat Intelligence."""
         self.abuseipdb_key = ABUSEIPDB_API_KEY
         self.cache = self._load_cache()
         
@@ -69,7 +51,7 @@ class ThreatIntelligence:
         self.min_request_interval = 1.0  # 1 request/second dla AbuseIPDB free tier
     
     def _load_cache(self) -> Dict[str, Any]:
-        """Ładuje cache z pliku."""
+        """Load cache from file."""
         if THREAT_CACHE.exists():
             try:
                 with open(THREAT_CACHE, 'r', encoding='utf-8') as f:
@@ -79,7 +61,7 @@ class ThreatIntelligence:
         return {}
     
     def _save_cache(self):
-        """Zapisuje cache do pliku."""
+        """Save cache to file."""
         try:
             with open(THREAT_CACHE, 'w', encoding='utf-8') as f:
                 json.dump(self.cache, f, indent=2, ensure_ascii=False)
@@ -87,19 +69,11 @@ class ThreatIntelligence:
             pass
     
     def check_ip(self, ip: str) -> Dict[str, Any]:
-        """
-        Sprawdza IP w bazach threat intelligence.
-        
-        Args:
-            ip: Adres IP do sprawdzenia
-        
-        Returns:
-            Słownik z wynikami threat intelligence
-        """
-        # Sprawdź cache
+        """Check IP against threat intelligence DBs. Returns result dict."""
+        # Check cache
         if ip in self.cache:
             cached_result = self.cache[ip]
-            # Cache ważny przez 24h
+            # Cache valid 24h
             if time.time() - cached_result.get('cached_at', 0) < 86400:
                 return cached_result
         
@@ -112,7 +86,7 @@ class ThreatIntelligence:
             'checked_at': time.time()
         }
         
-        # Sprawdź AbuseIPDB (jeśli dostępne)
+        # Check AbuseIPDB if available
         if self.abuseipdb_key and REQUESTS_AVAILABLE:
             abuse_result = self._check_abuseipdb(ip)
             if abuse_result:
@@ -121,7 +95,7 @@ class ThreatIntelligence:
                 result['is_threat'] = abuse_result.get('abuseConfidencePercentage', 0) > 25
                 result['reputation'] = 'malicious' if result['is_threat'] else 'clean'
         
-        # Sprawdź VirusTotal (jeśli dostępne)
+        # Check VirusTotal if available
         try:
             from external_apis import ExternalAPIs
             apis = ExternalAPIs()
@@ -137,9 +111,9 @@ class ThreatIntelligence:
         except Exception:
             pass
         
-        # Sprawdź Shodan (jeśli dostępne) - tylko dla publicznych IP
+        # Check Shodan if available (public IPs only)
         try:
-            # Sprawdź czy IP jest prywatne (Shodan działa tylko dla publicznych IP)
+            # Skip private IPs (Shodan only has public IPs)
             def is_private_ip(ip_addr: str) -> bool:
                 try:
                     parts = ip_addr.split('.')
@@ -155,7 +129,7 @@ class ThreatIntelligence:
                 except:
                     return False
             
-            # Pomiń prywatne IP - Shodan ich nie obsługuje
+            # Skip private IPs
             if not is_private_ip(ip):
                 from external_apis import ExternalAPIs
                 apis = ExternalAPIs()
@@ -222,19 +196,8 @@ class ThreatIntelligence:
         return None
     
     def check_devices_async(self, devices: List[Device], max_workers: int = 5) -> Dict[str, Dict[str, Any]]:
-        """
-        Sprawdza wiele urządzeń asynchronicznie (nie blokuje).
-        
-        Args:
-            devices: Lista urządzeń
-            max_workers: Maksymalna liczba równoległych requestów
-        
-        Returns:
-            Słownik z wynikami (IP -> threat intelligence)
-        """
+        """Check multiple devices asynchronously. Returns dict IP -> threat intel result."""
         results = {}
-        
-        # Zbierz unikalne IP
         ips_to_check = set()
         for device in devices:
             ip = device.metadata.get('ip_address')
@@ -244,7 +207,6 @@ class ThreatIntelligence:
         if not ips_to_check:
             return results
         
-        # Sprawdź równolegle (z ograniczeniem)
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             futures = {executor.submit(self.check_ip, ip): ip for ip in ips_to_check}
             
@@ -263,6 +225,5 @@ if __name__ == "__main__":
     # Test
     ti = ThreatIntelligence()
     
-    # Test IP (Google DNS - powinien być clean)
     result = ti.check_ip("8.8.8.8")
-    print(f"Wynik dla 8.8.8.8: {json.dumps(result, indent=2, ensure_ascii=False)}")
+    print(f"Result for 8.8.8.8: {json.dumps(result, indent=2, ensure_ascii=False)}")

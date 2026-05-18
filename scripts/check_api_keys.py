@@ -1,36 +1,36 @@
 #!/usr/bin/env python3
 """
-Skrypt do weryfikacji kluczy API.
-Sprawdza czy klucze API są poprawnie skonfigurowane i działają.
+Verify API keys.
+Checks that API keys are correctly configured and working.
 """
 
 import os
 import sys
 from pathlib import Path
 
-# Załaduj zmienne środowiskowe
+# Load environment variables
 try:
     from dotenv import load_dotenv
-    project_dir = Path(__file__).parent
+    project_dir = Path(__file__).parent.parent
     env_file = project_dir / ".env"
     if env_file.exists():
         load_dotenv(env_file)
-        print(f"✅ Załadowano plik .env z: {env_file}")
+        print(f"✅ Loaded .env from: {env_file}")
     else:
         load_dotenv()
-        print("⚠️  Plik .env nie istnieje - używam zmiennych środowiskowych systemu")
+        print("⚠️  .env file not found – using system environment variables")
 except ImportError:
-    print("⚠️  python-dotenv nie jest zainstalowany - używam zmiennych środowiskowych systemu")
+    print("⚠️  python-dotenv not installed – using system environment variables")
 
 print("\n" + "="*60)
-print("🔍 WERYFIKACJA KLUCZY API")
+print("🔍 API KEY VERIFICATION")
 print("="*60 + "\n")
 
-# Sprawdź VirusTotal
+# Check VirusTotal
 virustotal_key = os.getenv("VIRUSTOTAL_API_KEY")
 if virustotal_key:
     print(f"✅ VIRUSTOTAL_API_KEY: {'*' * (len(virustotal_key) - 4) + virustotal_key[-4:]}")
-    print("   Testowanie połączenia...")
+    print("   Testing connection...")
     try:
         import requests
         headers = {"x-apikey": virustotal_key}
@@ -40,31 +40,31 @@ if virustotal_key:
             timeout=5
         )
         if response.status_code == 200:
-            print("   ✅ Klucz działa poprawnie!")
+            print("   ✅ Key works!")
         elif response.status_code == 401:
             error_data = response.json()
             error_msg = error_data.get('error', {}).get('message', 'Invalid API key')
-            print(f"   ❌ BŁĄD: Nieprawidłowy klucz API")
-            print(f"   📝 Szczegóły: {error_msg}")
-            print(f"   🔗 Uzyskaj nowy klucz: https://www.virustotal.com/gui/join-us")
+            print(f"   ❌ ERROR: Invalid API key")
+            print(f"   📝 Details: {error_msg}")
+            print(f"   🔗 Get a new key: https://www.virustotal.com/gui/join-us")
         elif response.status_code == 403:
-            print(f"   ❌ BŁĄD: Brak uprawnień (klucz może być nieaktywny)")
-            print(f"   🔗 Sprawdź status: https://www.virustotal.com/gui/join-us")
+            print(f"   ❌ ERROR: No permission (key may be inactive)")
+            print(f"   🔗 Check status: https://www.virustotal.com/gui/join-us")
         else:
             print(f"   ⚠️  Status: {response.status_code}")
     except Exception as e:
-        print(f"   ⚠️  Błąd testowania: {e}")
+        print(f"   ⚠️  Test error: {e}")
 else:
-    print("❌ VIRUSTOTAL_API_KEY: NIE USTAWIONY")
-    print("   🔗 Uzyskaj klucz: https://www.virustotal.com/gui/join-us")
+    print("❌ VIRUSTOTAL_API_KEY: NOT SET")
+    print("   🔗 Get key: https://www.virustotal.com/gui/join-us")
 
 print()
 
-# Sprawdź Shodan
+# Check Shodan
 shodan_key = os.getenv("SHODAN_API_KEY")
 if shodan_key:
     print(f"✅ SHODAN_API_KEY: {'*' * (len(shodan_key) - 4) + shodan_key[-4:]}")
-    print("   Testowanie połączenia...")
+    print("   Testing connection...")
     try:
         import requests
         response = requests.get(
@@ -74,50 +74,50 @@ if shodan_key:
         )
         if response.status_code == 200:
             data = response.json()
-            print(f"   ✅ Klucz działa poprawnie!")
+            print(f"   ✅ Key works!")
             print(f"   📊 Plan: {data.get('plan', 'unknown')}")
-            print(f"   📊 Limity: {data.get('query_credits', 'unknown')} kredytów")
+            print(f"   📊 Credits: {data.get('query_credits', 'unknown')}")
         elif response.status_code == 401:
             error_data = response.json()
             error_msg = error_data.get('error', 'Invalid API key')
-            print(f"   ❌ BŁĄD: Nieprawidłowy klucz API")
-            print(f"   📝 Szczegóły: {error_msg}")
-            print(f"   🔗 Uzyskaj nowy klucz: https://account.shodan.io/register")
+            print(f"   ❌ ERROR: Invalid API key")
+            print(f"   📝 Details: {error_msg}")
+            print(f"   🔗 Get a new key: https://account.shodan.io/register")
         else:
             print(f"   ⚠️  Status: {response.status_code}")
     except Exception as e:
-        print(f"   ⚠️  Błąd testowania: {e}")
+        print(f"   ⚠️  Test error: {e}")
 else:
-    print("❌ SHODAN_API_KEY: NIE USTAWIONY (opcjonalne)")
-    print("   🔗 Uzyskaj klucz: https://account.shodan.io/register")
+    print("❌ SHODAN_API_KEY: NOT SET (optional)")
+    print("   🔗 Get key: https://account.shodan.io/register")
 
 print()
 
-# Sprawdź NVD
+# Check NVD
 nvd_key = os.getenv("NVD_API_KEY")
 if nvd_key:
     print(f"✅ NVD_API_KEY: {'*' * (len(nvd_key) - 4) + nvd_key[-4:]}")
-    print("   ✅ Klucz skonfigurowany (NVD nie wymaga testowania)")
+    print("   ✅ Key configured (NVD does not require a live test)")
 else:
-    print("❌ NVD_API_KEY: NIE USTAWIONY (opcjonalne)")
-    print("   🔗 Uzyskaj klucz: https://nvd.nist.gov/developers/request-an-api-key")
+    print("❌ NVD_API_KEY: NOT SET (optional)")
+    print("   🔗 Get key: https://nvd.nist.gov/developers/request-an-api-key")
 
 print()
 
-# Sprawdź Vulners
+# Check Vulners
 vulners_key = os.getenv("VULNERS_API_KEY")
 if vulners_key:
     print(f"✅ VULNERS_API_KEY: {'*' * (len(vulners_key) - 4) + vulners_key[-4:]}")
-    print("   ✅ Klucz skonfigurowany")
+    print("   ✅ Key configured")
 else:
-    print("❌ VULNERS_API_KEY: NIE USTAWIONY (opcjonalne)")
-    print("   🔗 Uzyskaj klucz: https://vulners.com/register")
+    print("❌ VULNERS_API_KEY: NOT SET (optional)")
+    print("   🔗 Get key: https://vulners.com/register")
 
 print("\n" + "="*60)
-print("📝 INSTRUKCJE:")
+print("📝 INSTRUCTIONS:")
 print("="*60)
-print("1. Jeśli klucze nie działają, sprawdź czy są poprawne w pliku .env")
-print("2. Skopiuj .env.example do .env: cp .env.example .env")
-print("3. Edytuj .env i wklej swoje klucze API")
-print("4. Uruchom ponownie ten skrypt: python3 check_api_keys.py")
+print("1. If keys don't work, check they are correct in .env")
+print("2. Copy .env.example to .env: cp .env.example .env")
+print("3. Edit .env and paste your API keys")
+print("4. Run this script again: python3 scripts/check_api_keys.py")
 print("="*60)

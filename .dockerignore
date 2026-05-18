@@ -1,0 +1,11 @@
+venv/
+__pycache__/
+*.pyc
+*.pyo
+.env
+rust_scanner/target/
+history.db
+exports/
+reports/
+data/cache/
+.git/

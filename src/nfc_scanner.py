@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 """
-Prawdziwy skaner NFC - wykrywa urządzenia medyczne z NFC.
+NFC scanner – detects NFC medical devices.
 
-Ten moduł używa nfcpy lub innych bibliotek do wykrywania urządzeń NFC
-i analizy ich właściwości bezpieczeństwa.
+Uses nfcpy or other libraries to detect NFC devices and analyze their security properties.
 """
 
 import sys
@@ -13,7 +12,6 @@ from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.panel import Panel
 
-# Dodaj katalog src/ do ścieżki Python
 script_dir = os.path.dirname(os.path.abspath(__file__))
 if script_dir not in sys.path:
     sys.path.insert(0, script_dir)
@@ -24,7 +22,6 @@ try:
 except ImportError:
     NFC_AVAILABLE = False
 
-# Alternatywnie użyj pyscard dla kart inteligentnych
 try:
     from smartcard.System import readers
     from smartcard.util import toHexString
@@ -38,33 +35,20 @@ console = Console()
 
 
 class NFCScanner:
-    """
-    Prawdziwy skaner NFC używający nfcpy lub pyscard.
-    
-    Wykrywa urządzenia NFC (karty, tagi) i analizuje ich właściwości
-    bezpieczeństwa. Wymaga czytnika NFC.
-    """
+    """NFC scanner using nfcpy or pyscard. Detects NFC devices (cards, tags) and analyzes security. Requires NFC reader."""
     
     def __init__(self):
-        """Inicjalizacja skanera NFC."""
+        """Initialize NFC scanner."""
         if not NFC_AVAILABLE and not PYSMCARD_AVAILABLE:
-            console.print("[yellow]⚠️  Biblioteki NFC nie są zainstalowane.[/yellow]")
-            console.print("[yellow]   Zainstaluj: pip install nfcpy pyscard[/yellow]")
-            console.print("[yellow]   Wymaga czytnika NFC (np. ACR122U)[/yellow]\n")
+            console.print("[yellow]⚠️  NFC libraries are not installed.[/yellow]")
+            console.print("[yellow]   Install: pip install nfcpy pyscard[/yellow]")
+            console.print("[yellow]   NFC reader required (e.g. ACR122U)[/yellow]\n")
         self.scanned_devices: List[Device] = []
     
     def scan_nfc_devices(self, duration: int = 5) -> List[Device]:
-        """
-        Skanuje urządzenia NFC w zasięgu.
-        
-        Args:
-            duration: Czas skanowania w sekundach
-        
-        Returns:
-            Lista wykrytych urządzeń Device
-        """
-        console.print("[cyan]🔍 Rozpoczynam skanowanie NFC...[/cyan]")
-        console.print("[dim]Zbliż urządzenie NFC do czytnika...[/dim]\n")
+        """Scan for NFC devices in range. duration: scan time in seconds. Returns list of Device."""
+        console.print("[cyan]🔍 Starting NFC scan...[/cyan]")
+        console.print("[dim]Hold NFC device near the reader...[/dim]\n")
         
         devices: List[Device] = []
         
@@ -75,163 +59,89 @@ class NFCScanner:
             smartcard_devices = self._scan_smartcard()
             devices.extend(smartcard_devices)
         else:
-            console.print("[yellow]⚠️  Brak dostępnych bibliotek NFC - nie można skanować[/yellow]")
-            console.print("[yellow]   NFC wymaga specjalnego sprzętu (czytnik NFC)[/yellow]\n")
-        
+            console.print("[yellow]⚠️  No NFC libraries available – cannot scan[/yellow]")
+            console.print("[yellow]   NFC requires dedicated hardware (NFC reader)[/yellow]\n")
         self.scanned_devices = devices
-        console.print(f"\n[green]✅ Skanowanie NFC zakończone. Znaleziono {len(devices)} urządzeń.[/green]\n")
+        console.print(f"\n[green]✅ NFC scan finished. Found {len(devices)} device(s).[/green]\n")
         return devices
     
     def _scan_nfcpy(self, duration: int) -> List[Device]:
-        """
-        Skanuje urządzenia NFC używając biblioteki nfcpy.
-        
-        nfcpy to biblioteka Python do komunikacji z czytnikami NFC.
-        Wymaga podłączonego czytnika NFC (np. ACR122U, PN532).
-        
-        Args:
-            duration: Czas skanowania w sekundach (jak długo czekać na zbliżenie karty)
-        
-        Returns:
-            Lista wykrytych urządzeń Device
-        """
+        """Scan NFC devices using nfcpy. Requires connected NFC reader (e.g. ACR122U, PN532). Returns list of Device."""
         devices: List[Device] = []
-        
         try:
-            # Połącz się z czytnikiem NFC przez USB
-            # ContactlessFrontend to interfejs do komunikacji z czytnikiem
             clf = nfc.ContactlessFrontend('usb')
-            
             if not clf:
-                console.print("[yellow]⚠️  Nie znaleziono czytnika NFC[/yellow]")
-                console.print("[yellow]   Sprawdź czy czytnik jest podłączony[/yellow]\n")
+                console.print("[yellow]⚠️  No NFC reader found[/yellow]")
+                console.print("[yellow]   Check that the reader is connected[/yellow]\n")
                 return devices
-            
-            console.print("[green]✓ Czytnik NFC wykryty[/green]\n")
-            
-            # Skanuj przez określony czas
+            console.print("[green]✓ NFC reader detected[/green]\n")
             import time
             start_time = time.time()
-            
             while time.time() - start_time < duration:
-                # Spróbuj odczytać tag/kartę
                 tag = clf.connect(rdwr={'on-connect': self._on_nfc_connect})
-                
                 if tag:
                     device = self._analyze_nfc_tag(tag)
                     if device:
                         devices.append(device)
-                        console.print(f"  [green]✓[/green] Wykryto: {device.name}")
-                        break  # Znaleziono urządzenie, zakończ skanowanie
-            
+                        console.print(f"  [green]✓[/green] Detected: {device.name}")
+                        break
             clf.close()
-        
         except Exception as e:
-            console.print(f"[yellow]⚠️  Błąd skanowania NFC: {e}[/yellow]")
-            console.print("[yellow]   Sprawdź czy czytnik NFC jest podłączony i działa[/yellow]\n")
+            console.print(f"[yellow]⚠️  NFC scan error: {e}[/yellow]")
+            console.print("[yellow]   Check that the NFC reader is connected and working[/yellow]\n")
         
         return devices
     
     def _scan_smartcard(self) -> List[Device]:
-        """
-        Skanuje karty inteligentne używając biblioteki pyscard.
-        
-        pyscard to biblioteka Python do komunikacji z czytnikami kart inteligentnych (PC/SC).
-        Wymaga zainstalowanych bibliotek systemowych PCSC (libpcsclite-dev na Linux).
-        
-        Karty inteligentne (smart cards) to karty z chipem, które mogą przechowywać
-        dane medyczne pacjenta lub służyć do autoryzacji dostępu.
-        
-        Returns:
-            Lista wykrytych urządzeń Device
-        """
+        """Scan smart cards using pyscard (PC/SC). Requires system PCSC libs (e.g. libpcsclite-dev on Linux). Returns list of Device."""
         devices: List[Device] = []
-        
         try:
-            # Znajdź wszystkie dostępne czytniki kart PC/SC
-            # readers() zwraca listę dostępnych czytników w systemie
             reader_list = readers()
-            
             if not reader_list:
-                console.print("[yellow]⚠️  Nie znaleziono czytników kart[/yellow]\n")
+                console.print("[yellow]⚠️  No card readers found[/yellow]\n")
                 return devices
-            
-            console.print(f"[green]✓ Znaleziono {len(reader_list)} czytnik(ów)[/green]\n")
-            
+            console.print(f"[green]✓ Found {len(reader_list)} reader(s)[/green]\n")
             for reader in reader_list:
                 try:
-                    # Utwórz połączenie z kartą
                     connection = reader.createConnection()
                     connection.connect()
-                    
-                    # Odczytaj ATR (Answer To Reset) - identyfikator karty
-                    # ATR to pierwsze dane wysyłane przez kartę po włożeniu do czytnika
-                    # Zawiera informacje o typie karty i jej możliwościach
                     atr = connection.getATR()
-                    
                     device = Device(
                         mac_address=f"NFC-{toHexString(atr)[:17]}",
                         name=f"NFC-Card-{toHexString(atr)[:8]}",
                         device_type=DeviceType.UNKNOWN,
                         protocol=Protocol.NFC,
-                        has_encryption=True,  # Karty inteligentne zazwyczaj mają szyfrowanie
+                        has_encryption=True,
                         encryption_type="Basic encryption (smart card)",
-                        requires_pairing=True,  # Wymagają autoryzacji
+                        requires_pairing=True,
                         metadata={
                             "atr": toHexString(atr),
                             "reader": str(reader)
                         }
                     )
-                    
                     device.calculate_security_score()
                     devices.append(device)
-                    console.print(f"  [green]✓[/green] Wykryto: {device.name}")
-                
+                    console.print(f"  [green]✓[/green] Detected: {device.name}")
                 except Exception:
-                    # Karta nie jest w czytniku
                     continue
-        
         except Exception as e:
-            console.print(f"[yellow]⚠️  Błąd skanowania kart: {e}[/yellow]\n")
+            console.print(f"[yellow]⚠️  Card scan error: {e}[/yellow]\n")
         
         return devices
     
     def _on_nfc_connect(self, tag):
-        """Callback wywoływany gdy wykryto tag NFC."""
+        """Callback when NFC tag is detected."""
         return True
     
     def _analyze_nfc_tag(self, tag) -> Optional[Device]:
-        """
-        Analizuje tag NFC i tworzy obiekt Device.
-        
-        Tag NFC to pasywny element (karta, brelok) który może przechowywać dane.
-        W kontekście medycznym, tagi NFC mogą zawierać:
-        - Dane pacjenta (ID, historia medyczna)
-        - Informacje o lekach
-        - Autoryzację dostępu do urządzeń medycznych
-        
-        Args:
-            tag: Obiekt tag NFC z biblioteki nfcpy zawierający informacje o tagu
-        
-        Returns:
-            Obiekt Device z analizą bezpieczeństwa tagu lub None jeśli analiza się nie powiodła
-        """
+        """Analyze NFC tag and create Device. Returns Device or None."""
         try:
-            # Pobierz podstawowe informacje o tagu
-            tag_type = str(tag.type)  # Typ tagu (np. "Type2Tag", "Type4Tag")
-            identifier = tag.identifier.hex()  # Unikalny identyfikator tagu (UID)
-            
-            # Określ typ urządzenia
-            # W większości przypadków tagi NFC nie są specyficznie medyczne,
-            # więc oznaczamy jako UNKNOWN (można rozszerzyć o wykrywanie danych medycznych)
+            tag_type = str(tag.type)
+            identifier = tag.identifier.hex()
             device_type = DeviceType.UNKNOWN
-            
-            # Sprawdź bezpieczeństwo tagu
-            # NFC zazwyczaj ma podstawowe szyfrowanie (szyfrowanie na poziomie protokołu)
-            # W rzeczywistości można by odczytać dane z tagu i sprawdzić czy są zaszyfrowane
-            has_encryption = True  # NFC zazwyczaj ma podstawowe szyfrowanie
+            has_encryption = True
             encryption_type = "Basic encryption (NFC tag)"
-            requires_pairing = False  # NFC nie wymaga parowania (tylko zbliżenie do czytnika)
+            requires_pairing = False
             
             device = Device(
                 mac_address=f"NFC-{identifier[:17]}",
@@ -254,27 +164,23 @@ class NFCScanner:
             return None
     
     def get_all_devices(self) -> List[Device]:
-        """Zwraca wszystkie wykryte urządzenia."""
+        """Return all detected devices."""
         return self.scanned_devices
 
 
 if __name__ == "__main__":
-    # Test skanera NFC
     console.print(Panel.fit(
-        "[bold cyan]🔍 Test: Skaner NFC[/bold cyan]\n"
-        "[dim]Zbliż urządzenie NFC do czytnika...[/dim]",
+        "[bold cyan]🔍 Test: NFC Scanner[/bold cyan]\n"
+        "[dim]Hold NFC device near the reader...[/dim]",
         style="cyan"
     ))
     console.print()
-    
     scanner = NFCScanner()
     devices = scanner.scan_nfc_devices(duration=5)
-    
-    console.print(f"\n[bold green]✅ Znaleziono {len(devices)} urządzeń:[/bold green]\n")
-    
+    console.print(f"\n[bold green]✅ Found {len(devices)} device(s):[/bold green]\n")
     for device in devices:
         console.print(f"[cyan]{device.name}[/cyan] ({device.mac_address})")
-        console.print(f"  Typ: {device.device_type.value}")
-        console.print(f"  Szyfrowanie: {'✅ Tak' if device.has_encryption else '❌ Nie'}")
+        console.print(f"  Type: {device.device_type.value}")
+        console.print(f"  Encryption: {'✅ Yes' if device.has_encryption else '❌ No'}")
         console.print(f"  Security Score: {device.security_score}/100")
         console.print()

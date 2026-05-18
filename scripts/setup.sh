@@ -1,38 +1,38 @@
 #!/bin/bash
-# Setup script dla Medical Device Security Scanner
+# Setup script for Medical Device Security Scanner
 
 echo "🏥 Medical Device Security Scanner - Setup"
 echo "=========================================="
 echo ""
 
-# Sprawdź czy Python 3.9+ jest zainstalowany
+# Check if Python 3.9+ is installed
 if ! command -v python3 &> /dev/null; then
-    echo "❌ Python 3 nie jest zainstalowany!"
+    echo "❌ Python 3 is not installed!"
     exit 1
 fi
 
 PYTHON_VERSION=$(python3 --version | cut -d' ' -f2 | cut -d'.' -f1,2)
-echo "✓ Python $PYTHON_VERSION znaleziony"
+echo "✓ Python $PYTHON_VERSION found"
 
-# Utwórz virtual environment
+# Create virtual environment
 echo ""
-echo "📦 Tworzenie virtual environment..."
+echo "📦 Creating virtual environment..."
 python3 -m venv venv
 
-# Aktywuj virtual environment
-echo "🔧 Aktywacja virtual environment..."
+# Activate virtual environment
+echo "🔧 Activating virtual environment..."
 source venv/bin/activate
 
-# Zainstaluj zależności
+# Install dependencies
 echo ""
-echo "📥 Instalowanie zależności..."
+echo "📥 Installing dependencies..."
 pip install --upgrade pip
 pip install -r requirements.txt
 
 echo ""
-echo "✅ Setup zakończony!"
+echo "✅ Setup complete!"
 echo ""
-echo "🚀 Aby uruchomić skaner:"
-echo "   1. source venv/bin/activate  (aktywuj virtual environment)"
-echo "   2. python src/scanner.py     (uruchom skaner)"
+echo "🚀 To run the scanner:"
+echo "   1. source venv/bin/activate  (activate virtual environment)"
+echo "   2. python src/scanner.py     (run scanner)"
 echo ""

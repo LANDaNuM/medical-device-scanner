@@ -1,12 +1,12 @@
 /*
- * ESP32 Unified Scanner - BLE + WiFi, tylko ZMIANY (new/gone) + test BLE bez parowania
+ * ESP32 Unified Scanner - BLE + WiFi, changes only (new/gone) + BLE no-pairing test
  *
- * - Wysyła dane TYLKO gdy coś się zmieni: event:new / event:gone.
- * - Dla pierwszego nowego urządzenia BLE w cyklu: próba połączenia bez parowania.
- *   Jeśli się uda → w linii dodawane jest "ble_no_auth": true (możliwa podatność).
- * - Co ~60 s heartbeat.
+ * - Sends data ONLY when something changes: event:new / event:gone.
+ * - For the first new BLE device in a cycle: attempt connection without pairing.
+ *   If it succeeds, the line gets "ble_no_auth": true (possible vulnerability).
+ * - Heartbeat every ~60 s.
  *
- * Podłącz do Pi USB, na Pi: python scripts/esp32_serial_reader.py --out wyniki_esp32.json --enrich
+ * Connect to Pi via USB; on Pi: python scripts/esp32_serial_reader.py --out wyniki_esp32.json --enrich
  */
 
 #include <BLEDevice.h>
@@ -162,7 +162,7 @@ void loop() {
   nLastWifi = curWifi;
   WiFi.scanDelete();
 
-  // Co ~60 s heartbeat (żeby wiadomo, że skaner żyje)
+  // Heartbeat every ~60 s (so the reader knows the scanner is alive)
   if (scanCount % 6 == 0) {
     Serial.print("{\"type\":\"heartbeat\",\"ble_count\":");
     Serial.print(nLastBle);

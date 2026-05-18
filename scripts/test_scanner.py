@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 """
-Skrypt testowy do weryfikacji działania skanera.
+Test script to verify scanner behaviour.
 
-Ten skrypt pomaga przetestować skaner w bezpieczny sposób:
-1. Test WiFi - uruchamia prosty serwer HTTP z otwartymi portami (symulacja podatnego urządzenia)
-2. Test BLE - instrukcje jak przetestować z telefonem
-3. Test USB - instrukcje jak przetestować z prostym urządzeniem
+Helps test the scanner safely:
+1. WiFi test – runs a simple HTTP server with open ports (simulates a vulnerable device)
+2. BLE test – instructions for testing with a phone
+3. USB test – instructions for testing with a simple USB device
 
-UŻYCIE:
-    python scripts/test_scanner.py --wifi    # Uruchom serwer testowy WiFi
-    python scripts/test_scanner.py --help   # Pokaż wszystkie opcje
+USAGE:
+    python scripts/test_scanner.py --wifi    # Run WiFi test server
+    python scripts/test_scanner.py --help    # Show all options
 """
 
 import sys
@@ -22,7 +22,7 @@ from pathlib import Path
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from threading import Thread
 
-# Dodaj katalog src/ do ścieżki
+# Add src/ to path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root / "src"))
 
@@ -34,17 +34,17 @@ console = Console()
 
 
 class TestDeviceHandler(BaseHTTPRequestHandler):
-    """Prosty handler HTTP dla symulacji podatnego urządzenia medycznego."""
+    """Simple HTTP handler to simulate a vulnerable medical device."""
     
     def do_GET(self):
-        """Obsługuje żądania GET - symuluje urządzenie medyczne."""
-        # Symuluj odpowiedź urządzenia medycznego
+        """Handle GET requests – simulate a medical device."""
+        # Simulate medical device response
         self.send_response(200)
         self.send_header('Content-type', 'text/html')
         self.send_header('Server', 'Medical-Device-Simulator/1.0')
         self.end_headers()
         
-        # Symuluj dane medyczne (FAŁSZYWE - tylko do testów!)
+        # Simulate medical data (FAKE – for testing only!)
         response = """
         <html>
         <head><title>Medical Device Simulator</title></head>
@@ -61,12 +61,12 @@ class TestDeviceHandler(BaseHTTPRequestHandler):
         self.wfile.write(response.encode())
     
     def log_message(self, format, *args):
-        """Wycisz logi HTTP."""
+        """Suppress HTTP logs."""
         pass
 
 
 def get_local_ip():
-    """Pobiera lokalny adres IP."""
+    """Get local IP address."""
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.connect(("8.8.8.8", 80))
@@ -79,200 +79,200 @@ def get_local_ip():
 
 def run_test_wifi_server(port=8080, duration=300):
     """
-    Uruchamia prosty serwer HTTP jako symulacja podatnego urządzenia medycznego.
+    Run a simple HTTP server to simulate a vulnerable medical device.
     
     Args:
-        port: Port na którym uruchomić serwer (domyślnie 8080)
-        duration: Czas działania serwera w sekundach (domyślnie 300 = 5 minut)
+        port: Port to run the server on (default 8080)
+        duration: Server run time in seconds (default 300 = 5 minutes)
     """
     local_ip = get_local_ip()
     
     console.print(Panel.fit(
-        "[bold cyan]🧪 Test WiFi - Symulacja Podatnego Urządzenia Medycznego[/bold cyan]\n"
-        f"[green]Serwer testowy uruchomiony na:[/green] [bold]{local_ip}:{port}[/bold]\n"
-        f"[dim]Czas działania: {duration} sekund (lub Ctrl+C aby zatrzymać)[/dim]\n"
-        "[yellow]⚠️  To jest TYLKO symulacja - nie prawdziwe urządzenie medyczne![/yellow]",
+        "[bold cyan]🧪 WiFi test – vulnerable medical device simulator[/bold cyan]\n"
+        f"[green]Test server running at:[/green] [bold]{local_ip}:{port}[/bold]\n"
+        f"[dim]Duration: {duration} seconds (or Ctrl+C to stop)[/dim]\n"
+        "[yellow]⚠️  This is ONLY a simulation – not a real medical device![/yellow]",
         style="cyan"
     ))
     console.print()
     
-    # Uruchom serwer HTTP
+    # Start HTTP server
     server = HTTPServer((local_ip, port), TestDeviceHandler)
     
-    console.print(f"[green]✅ Serwer testowy uruchomiony![/green]")
-    console.print(f"[cyan]   Adres: http://{local_ip}:{port}[/cyan]")
-    console.print(f"[cyan]   Status: Aktywny[/cyan]")
+    console.print(f"[green]✅ Test server started![/green]")
+    console.print(f"[cyan]   Address: http://{local_ip}:{port}[/cyan]")
+    console.print(f"[cyan]   Status: Active[/cyan]")
     console.print()
-    console.print("[bold yellow]📋 INSTRUKCJE TESTU:[/bold yellow]")
-    console.print("1. W drugim terminalu uruchom skaner:")
+    console.print("[bold yellow]📋 TEST INSTRUCTIONS:[/bold yellow]")
+    console.print("1. In a second terminal run the scanner:")
     console.print(f"   [cyan]python src/scanner.py --wifi[/cyan]")
     console.print()
-    console.print("2. Skaner powinien wykryć:")
-    console.print(f"   • Urządzenie na adresie {local_ip}")
-    console.print(f"   • Port {port} (HTTP) - otwarty")
-    console.print(f"   • Podatność: HTTP bez HTTPS")
+    console.print("2. The scanner should detect:")
+    console.print(f"   • Device at address {local_ip}")
+    console.print(f"   • Port {port} (HTTP) – open")
+    console.print(f"   • Vulnerability: HTTP without HTTPS")
     console.print()
-    console.print("3. Po zakończeniu testu naciśnij [bold red]Ctrl+C[/bold red] aby zatrzymać serwer")
+    console.print("3. When done, press [bold red]Ctrl+C[/bold red] to stop the server")
     console.print()
     
     try:
-        # Uruchom serwer w osobnym wątku
+        # Run server in a separate thread
         server_thread = Thread(target=server.serve_forever, daemon=True)
         server_thread.start()
         
-        # Czekaj przez określony czas
+        # Wait for the specified duration
         start_time = time.time()
         while time.time() - start_time < duration:
             time.sleep(1)
             elapsed = int(time.time() - start_time)
             remaining = duration - elapsed
-            if remaining % 30 == 0:  # Co 30 sekund
-                console.print(f"[dim]   Serwer działa... ({elapsed}s / {duration}s)[/dim]")
+            if remaining % 30 == 0:  # Every 30 seconds
+                console.print(f"[dim]   Server running... ({elapsed}s / {duration}s)[/dim]")
         
-        console.print(f"\n[yellow]⏹️  Zatrzymywanie serwera po {duration} sekundach...[/yellow]")
+        console.print(f"\n[yellow]⏹️  Stopping server after {duration} seconds...[/yellow]")
         server.shutdown()
-        console.print("[green]✅ Serwer zatrzymany[/green]")
+        console.print("[green]✅ Server stopped[/green]")
         
     except KeyboardInterrupt:
-        console.print("\n[yellow]⏹️  Zatrzymywanie serwera...[/yellow]")
+        console.print("\n[yellow]⏹️  Stopping server...[/yellow]")
         server.shutdown()
-        console.print("[green]✅ Serwer zatrzymany[/green]")
+        console.print("[green]✅ Server stopped[/green]")
 
 
 def show_ble_test_instructions():
-    """Pokazuje instrukcje testowania BLE z telefonem."""
+    """Show BLE testing instructions (using a phone)."""
     console.print(Panel.fit(
-        "[bold cyan]📱 Test BLE - Instrukcje Testowania z Telefonem[/bold cyan]",
+        "[bold cyan]📱 BLE test – instructions with phone[/bold cyan]",
         style="cyan"
     ))
     console.print()
     
-    console.print("[bold yellow]📋 INSTRUKCJE:[/bold yellow]")
+    console.print("[bold yellow]📋 INSTRUCTIONS:[/bold yellow]")
     console.print()
-    console.print("1. [cyan]Włącz Bluetooth na telefonie[/cyan]")
-    console.print("   • Ustawienia → Bluetooth → Włącz")
+    console.print("1. [cyan]Turn on Bluetooth on your phone[/cyan]")
+    console.print("   • Settings → Bluetooth → On")
     console.print()
-    console.print("2. [cyan]Upewnij się że telefon jest w zasięgu[/cyan]")
-    console.print("   • Telefon powinien być w odległości < 10 metrów")
+    console.print("2. [cyan]Keep the phone in range[/cyan]")
+    console.print("   • Phone should be within 10 metres")
     console.print()
-    console.print("3. [cyan]Uruchom skaner BLE:[/cyan]")
+    console.print("3. [cyan]Run the BLE scanner:[/cyan]")
     console.print("   [bold]python src/scanner.py --ble[/bold]")
     console.print()
-    console.print("4. [green]Skaner powinien wykryć:[/green]")
-    console.print("   • Twój telefon (nazwa urządzenia)")
-    console.print("   • Adres MAC telefonu")
-    console.print("   • RSSI (siła sygnału)")
+    console.print("4. [green]The scanner should detect:[/green]")
+    console.print("   • Your phone (device name)")
+    console.print("   • Phone MAC address")
+    console.print("   • RSSI (signal strength)")
     console.print()
-    console.print("[yellow]💡 TIP:[/yellow] Jeśli telefon nie jest widoczny:")
-    console.print("   • Sprawdź czy Bluetooth jest włączony")
-    console.print("   • Sprawdź czy telefon nie jest w trybie 'Niewidoczny'")
-    console.print("   • Spróbuj zbliżyć telefon do laptopa")
+    console.print("[yellow]💡 TIP:[/yellow] If the phone is not visible:")
+    console.print("   • Check Bluetooth is on")
+    console.print("   • Check the phone is not in 'Hidden' mode")
+    console.print("   • Move the phone closer to the laptop")
     console.print()
 
 
 def show_usb_test_instructions():
-    """Pokazuje instrukcje testowania USB."""
+    """Show USB testing instructions."""
     console.print(Panel.fit(
-        "[bold cyan]🔌 Test USB - Instrukcje Testowania[/bold cyan]",
+        "[bold cyan]🔌 USB test – instructions[/bold cyan]",
         style="cyan"
     ))
     console.print()
     
-    console.print("[bold yellow]📋 INSTRUKCJE:[/bold yellow]")
+    console.print("[bold yellow]📋 INSTRUCTIONS:[/bold yellow]")
     console.print()
-    console.print("1. [cyan]Podłącz dowolne urządzenie USB:[/cyan]")
-    console.print("   • Pendrive USB")
-    console.print("   • Zewnętrzna klawiatura/mysz")
-    console.print("   • Telefon przez USB (tryb MTP)")
-    console.print("   • Zewnętrzny dysk USB")
+    console.print("1. [cyan]Connect any USB device:[/cyan]")
+    console.print("   • USB flash drive")
+    console.print("   • External keyboard/mouse")
+    console.print("   • Phone via USB (MTP mode)")
+    console.print("   • External USB disk")
     console.print()
-    console.print("2. [cyan]Uruchom skaner USB:[/cyan]")
+    console.print("2. [cyan]Run the USB scanner:[/cyan]")
     console.print("   [bold]python src/scanner.py --usb[/bold]")
     console.print()
-    console.print("3. [green]Skaner powinien wykryć:[/green]")
-    console.print("   • Podłączone urządzenie USB")
-    console.print("   • Vendor ID i Product ID")
-    console.print("   • Nazwę urządzenia")
+    console.print("3. [green]The scanner should detect:[/green]")
+    console.print("   • Connected USB device")
+    console.print("   • Vendor ID and Product ID")
+    console.print("   • Device name")
     console.print()
-    console.print("[yellow]💡 TIP:[/yellow] Jeśli urządzenie nie jest widoczne:")
-    console.print("   • Sprawdź czy urządzenie jest podłączone")
-    console.print("   • Sprawdź czy urządzenie jest zasilone")
-    console.print("   • Spróbuj innego portu USB")
+    console.print("[yellow]💡 TIP:[/yellow] If the device is not visible:")
+    console.print("   • Check the device is connected")
+    console.print("   • Check the device is powered")
+    console.print("   • Try another USB port")
     console.print()
 
 
 def show_full_test_guide():
-    """Pokazuje pełny przewodnik testowania."""
+    """Show full testing guide."""
     console.print(Panel.fit(
-        "[bold cyan]🧪 Pełny Przewodnik Testowania Skanera[/bold cyan]",
+        "[bold cyan]🧪 Scanner testing guide[/bold cyan]",
         style="cyan"
     ))
     console.print()
     
-    table = Table(title="Opcje Testowania", show_header=True, header_style="bold cyan")
-    table.add_column("Protokół", style="cyan", width=15)
-    table.add_column("Metoda Testu", style="green", width=40)
-    table.add_column("Poziom Trudności", style="yellow", width=20)
+    table = Table(title="Test options", show_header=True, header_style="bold cyan")
+    table.add_column("Protocol", style="cyan", width=15)
+    table.add_column("Test method", style="green", width=40)
+    table.add_column("Difficulty", style="yellow", width=20)
     
-    table.add_row("WiFi", "Serwer testowy (--wifi)", "🟢 Łatwe")
-    table.add_row("BLE", "Telefon z Bluetooth", "🟢 Łatwe")
-    table.add_row("USB", "Pendrive/urządzenie USB", "🟢 Łatwe")
-    table.add_row("NFC", "Karta NFC/telefon", "🟡 Średnie")
+    table.add_row("WiFi", "Test server (--wifi)", "🟢 Easy")
+    table.add_row("BLE", "Phone with Bluetooth", "🟢 Easy")
+    table.add_row("USB", "Flash drive / USB device", "🟢 Easy")
+    table.add_row("NFC", "NFC card / phone", "🟡 Medium")
     
     console.print(table)
     console.print()
     
-    console.print("[bold yellow]📋 SZYBKI START:[/bold yellow]")
+    console.print("[bold yellow]📋 QUICK START:[/bold yellow]")
     console.print()
-    console.print("1. [cyan]Test WiFi (najłatwiejszy):[/cyan]")
+    console.print("1. [cyan]WiFi test (easiest):[/cyan]")
     console.print("   [bold]python scripts/test_scanner.py --wifi[/bold]")
-    console.print("   (W drugim terminalu: python src/scanner.py --wifi)")
+    console.print("   (In a second terminal: python src/scanner.py --wifi)")
     console.print()
-    console.print("2. [cyan]Test BLE (z telefonem):[/cyan]")
+    console.print("2. [cyan]BLE test (with phone):[/cyan]")
     console.print("   [bold]python src/scanner.py --ble[/bold]")
-    console.print("   (Upewnij się że Bluetooth jest włączony na telefonie)")
+    console.print("   (Make sure Bluetooth is on on the phone)")
     console.print()
-    console.print("3. [cyan]Test USB (z pendrive):[/cyan]")
+    console.print("3. [cyan]USB test (with flash drive):[/cyan]")
     console.print("   [bold]python src/scanner.py --usb[/bold]")
-    console.print("   (Podłącz pendrive przed uruchomieniem)")
+    console.print("   (Connect the drive before running)")
     console.print()
 
 
 def main():
-    """Główna funkcja."""
+    """Main entry point."""
     parser = argparse.ArgumentParser(
-        description='Skrypt testowy do weryfikacji działania skanera',
+        description='Test script to verify scanner behaviour',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
-Przykłady użycia:
-  python scripts/test_scanner.py --wifi          # Uruchom serwer testowy WiFi
-  python scripts/test_scanner.py --ble           # Pokaż instrukcje testu BLE
-  python scripts/test_scanner.py --usb           # Pokaż instrukcje testu USB
-  python scripts/test_scanner.py --guide         # Pokaż pełny przewodnik
+Examples:
+  python scripts/test_scanner.py --wifi    # Run WiFi test server
+  python scripts/test_scanner.py --ble     # Show BLE test instructions
+  python scripts/test_scanner.py --usb     # Show USB test instructions
+  python scripts/test_scanner.py --guide   # Show full guide
         """
     )
     
     parser.add_argument('--wifi', action='store_true',
-                       help='Uruchom serwer testowy WiFi (symulacja podatnego urządzenia)')
+                       help='Run WiFi test server (vulnerable device simulation)')
     parser.add_argument('--port', type=int, default=8080,
-                       help='Port dla serwera testowego WiFi (domyślnie 8080)')
+                       help='Port for WiFi test server (default 8080)')
     parser.add_argument('--duration', type=int, default=300,
-                       help='Czas działania serwera w sekundach (domyślnie 300)')
+                       help='Server run time in seconds (default 300)')
     parser.add_argument('--ble', action='store_true',
-                       help='Pokaż instrukcje testowania BLE')
+                       help='Show BLE testing instructions')
     parser.add_argument('--usb', action='store_true',
-                       help='Pokaż instrukcje testowania USB')
+                       help='Show USB testing instructions')
     parser.add_argument('--guide', action='store_true',
-                       help='Pokaż pełny przewodnik testowania')
+                       help='Show full testing guide')
     
     args = parser.parse_args()
     
-    # Jeśli nie podano żadnej opcji, pokaż pełny przewodnik
+    # If no option given, show full guide
     if not any([args.wifi, args.ble, args.usb, args.guide]):
         show_full_test_guide()
         return
     
-    # Wykonaj wybrane testy
+    # Run selected tests
     if args.wifi:
         run_test_wifi_server(port=args.port, duration=args.duration)
     elif args.ble:
@@ -287,10 +287,10 @@ if __name__ == "__main__":
     try:
         main()
     except KeyboardInterrupt:
-        console.print("\n[yellow]⚠️  Przerwano przez użytkownika[/yellow]")
+        console.print("\n[yellow]⚠️  Interrupted by user[/yellow]")
         sys.exit(0)
     except Exception as e:
-        console.print(f"\n[red]❌ Błąd: {e}[/red]")
+        console.print(f"\n[red]❌ Error: {e}[/red]")
         import traceback
         traceback.print_exc()
         sys.exit(1)

@@ -1,19 +1,8 @@
 #!/usr/bin/env python3
 """
-Moduł do pobierania aktualnych podatności z zewnętrznych baz danych CVE.
+Fetch CVE data from external databases (NIST NVD, Vulners). Uses cache to limit API calls.
 
-Integruje się z:
-- NIST NVD (National Vulnerability Database) - darmowe API
-  * Bez API key: 5 zapytań/30s (darmowe)
-  * Z API key: 50 zapytań/30s (darmowe, wymaga rejestracji)
-- Vulners API - alternatywne źródło (darmowe, wyższe limity)
-- Lokalna baza jako fallback
-
-Używa cache aby nie spamować API i przyspieszyć działanie.
-
-KONFIGURACJA:
-- NVD API key: export NVD_API_KEY="your_key"
-- Vulners API key: export VULNERS_API_KEY="your_key" (opcjonalne)
+Config: NVD_API_KEY, VULNERS_API_KEY (optional). NVD: 5 req/30s without key, 50 with key.
 """
 
 import json
@@ -27,20 +16,16 @@ import requests
 from rich.console import Console
 from rich.panel import Panel
 
-# Załaduj zmienne środowiskowe z pliku .env (jeśli istnieje)
-# Szukaj .env w katalogu projektu (tam gdzie jest scanner.py), nie w katalogu roboczym
 try:
     from dotenv import load_dotenv
-    # Znajdź katalog projektu (2 poziomy wyżej od src/cve_lookup.py)
     project_dir = Path(__file__).parent.parent
     env_file = project_dir / ".env"
     if env_file.exists():
         load_dotenv(env_file)
     else:
-        # Fallback: spróbuj w katalogu roboczym
         load_dotenv()
 except ImportError:
-    pass  # python-dotenv nie jest wymagane, ale przydatne
+    pass
 
 console = Console()
 
@@ -50,33 +35,31 @@ CACHE_DIR.mkdir(parents=True, exist_ok=True)
 CVE_CACHE_FILE = CACHE_DIR / "cve_cache.json"
 
 # NIST NVD API endpoints
-NVD_API_BASE = "https://services.nvd.nist.gov/rest/json/cves/2.0"  # HTTPS - bezpieczne szyfrowanie
-NVD_RATE_LIMIT = 5  # requests per 30 seconds (bez API key)
-NVD_RATE_LIMIT_WITH_KEY = 50  # requests per 30 seconds (z API key)
+NVD_API_BASE = "https://services.nvd.nist.gov/rest/json/cves/2.0"  # HTTPS
+NVD_RATE_LIMIT = 5  # requests per 30 seconds (without API key)
+NVD_RATE_LIMIT_WITH_KEY = 50  # requests per 30 seconds (with API key)
 NVD_RATE_WINDOW = 30  # seconds
 
-# Mapowanie portów na protokoły/usługi (dla CPE)
 PORT_TO_SERVICE = {
-    # Porty medyczne
     104: "dicom",
     11112: "dicom",
     5000: "hl7",
-    # Porty administracyjne
+    # Admin ports
     22: "ssh",
     3389: "rdp",
     5900: "vnc",
     5901: "vnc",
-    # Porty webowe
+    # Web ports
     80: "http",
     443: "https",
     8080: "http",
     8443: "https",
-    # Porty baz danych
+    # Database ports
     1433: "mssql",
     3306: "mysql",
     5432: "postgresql",
     27017: "mongodb",
-    # Inne
+    # Other
     21: "ftp",
     23: "telnet",
     25: "smtp",
@@ -95,7 +78,7 @@ PORT_TO_SERVICE = {
 
 @dataclass
 class CVEInfo:
-    """Informacje o podatności CVE"""
+    """CVE vulnerability info."""
     cve_id: str
     description: str
     severity: str  # CRITICAL, HIGH, MEDIUM, LOW
@@ -110,38 +93,12 @@ class CVEInfo:
 
 
 class CVELookup:
-    """
-    Klasa do pobierania podatności CVE z NIST NVD API.
-    
-    Używa cache aby:
-    - Nie spamować API
-    - Przyspieszyć działanie
-    - Działać offline (z cache)
-    
-    BEZPIECZEŃSTWO:
-    - Wszystkie połączenia używają HTTPS (szyfrowane TLS/SSL)
-    - Połączenie jest bezpieczne nawet bez API key
-    - API key służy tylko do zwiększenia rate limitów, nie do bezpieczeństwa
-    """
+    """Fetch CVE data from NIST NVD API. Uses cache to limit calls and allow offline use. All connections use HTTPS."""
     
     def __init__(self, use_cache: bool = True, cache_days: int = 7, 
                  nvd_api_key: Optional[str] = None, vulners_api_key: Optional[str] = None,
                  prefer_vulners: bool = False):
-        """
-        Inicjalizacja CVELookup.
-        
-        Args:
-            use_cache: Czy używać cache (domyślnie True)
-            cache_days: Ile dni cache jest ważny (domyślnie 7)
-            nvd_api_key: Opcjonalny klucz API NVD (zwiększa rate limit z 5 do 50 zapytań/30s)
-                        Uzyskaj na: https://nvd.nist.gov/developers/request-an-api-key
-                        DARMOWE - wystarczy wypełnić formularz
-            vulners_api_key: Opcjonalny klucz API Vulners (zwiększa rate limit do 1000 zapytań/min)
-                            Uzyskaj na: https://vulners.com/register
-                            DARMOWE - wymaga rejestracji
-            prefer_vulners: Czy preferować Vulners API (wyższe limity)
-        """
-        # Sprawdź zmienne środowiskowe jeśli nie podano kluczy
+        """use_cache: use file cache; cache_days: cache validity; nvd_api_key/vulners_api_key: optional API keys for higher rate limits."""
         if not nvd_api_key:
             nvd_api_key = os.getenv('NVD_API_KEY')
         if not vulners_api_key:
@@ -158,68 +115,54 @@ class CVELookup:
         self.vulners_last_request_time = 0
         self.vulners_request_count = 0
         
-        # Wyświetl informacje o konfiguracji
         if self.nvd_api_key:
-            console.print("[green]✅ NVD API key wykryty - limit: 50 zapytań/30s[/green]")
+            console.print("[green]✅ NVD API key detected – limit: 50 req/30s[/green]")
         else:
-            console.print("[yellow]ℹ️  NVD API bez klucza - limit: 5 zapytań/30s[/yellow]")
-            console.print("[dim]   Uzyskaj darmowy klucz: https://nvd.nist.gov/developers/request-an-api-key[/dim]")
-        
+            console.print("[yellow]ℹ️  NVD API without key – limit: 5 req/30s[/yellow]")
+            console.print("[dim]   Get free key: https://nvd.nist.gov/developers/request-an-api-key[/dim]")
         if self.vulners_api_key:
-            console.print("[green]✅ Vulners API key wykryty - limit: 1000 zapytań/min[/green]")
+            console.print("[green]✅ Vulners API key detected – limit: 1000 req/min[/green]")
         elif self.prefer_vulners:
-            console.print("[yellow]ℹ️  Vulners API bez klucza - limit: 100 zapytań/min[/yellow]")
-            console.print("[dim]   Uzyskaj darmowy klucz: https://vulners.com/register[/dim]")
+            console.print("[yellow]ℹ️  Vulners API without key – limit: 100 req/min[/yellow]")
+            console.print("[dim]   Get free key: https://vulners.com/register[/dim]")
         
     def _load_cache(self) -> Dict:
-        """Ładuje cache z pliku"""
+        """Load cache from file."""
         if not self.use_cache or not CVE_CACHE_FILE.exists():
             return {}
-        
         try:
             with open(CVE_CACHE_FILE, 'r', encoding='utf-8') as f:
                 cache = json.load(f)
-                # Sprawdź czy cache nie jest przestarzały
                 cache_time = datetime.fromisoformat(cache.get('timestamp', '2000-01-01'))
                 if datetime.now() - cache_time > timedelta(days=self.cache_days):
-                    console.print("[yellow]⚠️  Cache przestarzały, będzie odświeżony[/yellow]")
+                    console.print("[yellow]⚠️  Cache expired, will refresh[/yellow]")
                     return {}
                 return cache.get('data', {})
         except Exception as e:
-            console.print(f"[yellow]⚠️  Błąd ładowania cache: {e}[/yellow]")
+            console.print(f"[yellow]⚠️  Error loading cache: {e}[/yellow]")
             return {}
     
     def _save_cache(self):
-        """Zapisuje cache do pliku"""
+        """Save cache to file."""
         if not self.use_cache:
             return
-        
         try:
-            cache_data = {
-                'timestamp': datetime.now().isoformat(),
-                'data': self.cache
-            }
+            cache_data = {'timestamp': datetime.now().isoformat(), 'data': self.cache}
             with open(CVE_CACHE_FILE, 'w', encoding='utf-8') as f:
                 json.dump(cache_data, f, indent=2, ensure_ascii=False)
         except Exception as e:
-            console.print(f"[yellow]⚠️  Błąd zapisu cache: {e}[/yellow]")
+            console.print(f"[yellow]⚠️  Error saving cache: {e}[/yellow]")
     
     def _rate_limit(self):
-        """Sprawdza rate limit dla NVD API"""
-        # Użyj wyższego limitu jeśli mamy API key
         rate_limit = NVD_RATE_LIMIT_WITH_KEY if self.nvd_api_key else NVD_RATE_LIMIT
-        
         current_time = time.time()
-        # Resetuj licznik jeśli minęło 30 sekund
         if current_time - self.last_request_time > NVD_RATE_WINDOW:
             self.request_count = 0
             self.last_request_time = current_time
-        
-        # Jeśli przekroczono limit, czekaj
         if self.request_count >= rate_limit:
             wait_time = NVD_RATE_WINDOW - (current_time - self.last_request_time)
             if wait_time > 0:
-                console.print(f"[dim]⏳ Oczekiwanie na rate limit ({int(wait_time)}s)...[/dim]")
+                console.print(f"[dim]⏳ Waiting for rate limit ({int(wait_time)}s)...[/dim]")
                 time.sleep(wait_time)
                 self.request_count = 0
                 self.last_request_time = time.time()
@@ -227,42 +170,28 @@ class CVELookup:
         self.request_count += 1
     
     def _search_nvd_api(self, keyword: str, max_results: int = 20) -> List[CVEInfo]:
-        """
-        Wyszukuje podatności w NIST NVD API.
-        
-        Args:
-            keyword: Słowo kluczowe do wyszukania (np. "SSH", "DICOM", "RDP")
-            max_results: Maksymalna liczba wyników
-        
-        Returns:
-            Lista CVEInfo z podatnościami
-        """
-        # Sprawdź cache
+        """Search NIST NVD API for CVEs by keyword. Returns list of CVEInfo."""
         cache_key = f"search:{keyword}"
         if cache_key in self.cache:
             cached_data = self.cache[cache_key]
             cached_time = datetime.fromisoformat(cached_data['timestamp'])
-            # Cache ważny przez 24 godziny
             if datetime.now() - cached_time < timedelta(hours=24):
-                console.print(f"[dim]📦 Używam cache dla: {keyword}[/dim]")
+                console.print(f"[dim]📦 Using cache for: {keyword}[/dim]")
                 return [CVEInfo(**item) for item in cached_data['cves']]
         
         # Rate limit
         self._rate_limit()
         
         try:
-            # Wyszukaj w NVD API
+            # Query NVD API
             params = {
                 'keywordSearch': keyword,
                 'resultsPerPage': max_results
             }
             
-            # Dodaj API key do nagłówków jeśli dostępny (zwiększa rate limit)
             headers = {}
             if self.nvd_api_key:
                 headers['apiKey'] = self.nvd_api_key
-            
-            # Wszystkie połączenia używają HTTPS (bezpieczne szyfrowanie TLS/SSL)
             response = requests.get(NVD_API_BASE, params=params, headers=headers, timeout=10, verify=True)
             response.raise_for_status()
             
@@ -274,11 +203,11 @@ class CVELookup:
                     cve_data = vuln.get('cve', {})
                     cve_id = cve_data.get('id', '')
                     
-                    # Pobierz opis
+                    # Get description
                     descriptions = cve_data.get('descriptions', [])
                     description = descriptions[0].get('value', '') if descriptions else ''
                     
-                    # Pobierz CVSS score
+                    # Get CVSS score
                     metrics = cve_data.get('metrics', {})
                     cvss_score = None
                     severity = "MEDIUM"
@@ -301,11 +230,11 @@ class CVELookup:
                         cvss_data = metrics['cvssMetricV30'][0]
                         cvss_score = cvss_data.get('cvssData', {}).get('baseScore')
                     
-                    # Pobierz daty
+                    # Get dates
                     published = cve_data.get('published', '')
                     last_modified = cve_data.get('lastModified', '')
                     
-                    # Pobierz affected products
+                    # Get affected products
                     configurations = cve_data.get('configurations', [])
                     affected = []
                     for config in configurations:
@@ -317,16 +246,15 @@ class CVELookup:
                     
                     cve_info = CVEInfo(
                         cve_id=cve_id,
-                        description=description[:500],  # Ogranicz długość
+                        description=description[:500],
                         severity=severity,
                         cvss_score=cvss_score,
                         published_date=published,
                         last_modified=last_modified,
-                        affected_products=affected[:5]  # Max 5 produktów
+                        affected_products=affected[:5]
                     )
                     cves.append(cve_info)
             
-            # Zapisz do cache
             self.cache[cache_key] = {
                 'timestamp': datetime.now().isoformat(),
                 'cves': [asdict(cve) for cve in cves]
@@ -336,33 +264,19 @@ class CVELookup:
             return cves
             
         except requests.exceptions.RequestException as e:
-            console.print(f"[yellow]⚠️  Błąd połączenia z NVD API: {e}[/yellow]")
-            console.print("[dim]Używam lokalnej bazy podatności...[/dim]")
+            console.print(f"[yellow]⚠️  NVD API connection error: {e}[/yellow]")
+            console.print("[dim]Using local vulnerability data...[/dim]")
             return []
         except Exception as e:
-            console.print(f"[yellow]⚠️  Błąd przetwarzania odpowiedzi NVD: {e}[/yellow]")
+            console.print(f"[yellow]⚠️  NVD response processing error: {e}[/yellow]")
             return []
     
     def get_cves_for_port(self, port: int) -> List[CVEInfo]:
-        """
-        Pobiera podatności CVE dla danego portu.
-        
-        Args:
-            port: Numer portu
-        
-        Returns:
-            Lista CVEInfo z podatnościami
-        """
-        # Mapuj port na usługę
+        """Get CVE list for a given port. Returns list of CVEInfo."""
         service = PORT_TO_SERVICE.get(port)
         if not service:
             return []
-        
-        # Wyszukaj podatności dla tej usługi
-        # Używamy kilku słów kluczowych dla lepszych wyników
         keywords = [service]
-        
-        # Dodaj dodatkowe słowa kluczowe dla niektórych usług
         if service == "ssh":
             keywords.extend(["openssh", "ssh protocol"])
         elif service == "rdp":
@@ -377,7 +291,7 @@ class CVELookup:
         all_cves = []
         seen_cve_ids = set()
         
-        for keyword in keywords[:2]:  # Max 2 słowa kluczowe aby nie spamować API
+        for keyword in keywords[:2]:
             cves = self._search_nvd_api(keyword, max_results=10)
             for cve in cves:
                 if cve.cve_id not in seen_cve_ids:
@@ -388,22 +302,13 @@ class CVELookup:
         severity_order = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3}
         all_cves.sort(key=lambda x: (severity_order.get(x.severity, 99), x.cvss_score or 0), reverse=True)
         
-        return all_cves[:10]  # Max 10 najważniejszych
+        return all_cves[:10]
     
     def get_cves_for_cve_list(self, cve_ids: List[str]) -> List[CVEInfo]:
-        """
-        Pobiera szczegóły podatności dla listy CVE ID.
-        
-        Args:
-            cve_ids: Lista CVE ID (np. ["CVE-2019-0708", "CVE-2020-14867"])
-        
-        Returns:
-            Lista CVEInfo z podatnościami
-        """
+        """Fetch CVE details for a list of CVE IDs. Returns list of CVEInfo."""
         all_cves = []
         
         for cve_id in cve_ids:
-            # Sprawdź cache
             cache_key = f"cve:{cve_id}"
             if cache_key in self.cache:
                 cached_data = self.cache[cache_key]
@@ -416,15 +321,10 @@ class CVELookup:
             self._rate_limit()
             
             try:
-                # Pobierz szczegóły CVE
                 url = f"{NVD_API_BASE}?cveId={cve_id}"
-                
-                # Dodaj API key do nagłówków jeśli dostępny
                 headers = {}
-                if self.api_key:
-                    headers['apiKey'] = self.api_key
-                
-                # Wszystkie połączenia używają HTTPS (bezpieczne szyfrowanie TLS/SSL)
+                if self.nvd_api_key:
+                    headers['apiKey'] = self.nvd_api_key
                 response = requests.get(url, headers=headers, timeout=10, verify=True)
                 response.raise_for_status()
                 
@@ -461,7 +361,6 @@ class CVELookup:
                         affected_products=[]
                     )
                     
-                    # Zapisz do cache
                     self.cache[cache_key] = {
                         'timestamp': datetime.now().isoformat(),
                         'cve': asdict(cve_info)
@@ -471,7 +370,7 @@ class CVELookup:
                     all_cves.append(cve_info)
                     
             except Exception as e:
-                console.print(f"[yellow]⚠️  Błąd pobierania {cve_id}: {e}[/yellow]")
+                console.print(f"[yellow]⚠️  Error fetching {cve_id}: {e}[/yellow]")
                 continue
         
         return all_cves
@@ -481,7 +380,7 @@ class CVELookup:
 _cve_lookup_instance = None
 
 def get_cve_lookup() -> CVELookup:
-    """Zwraca singleton instance CVELookup"""
+    """Return singleton CVELookup instance."""
     global _cve_lookup_instance
     if _cve_lookup_instance is None:
         _cve_lookup_instance = CVELookup()

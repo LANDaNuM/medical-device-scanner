@@ -1,14 +1,12 @@
 #!/usr/bin/env python3
 """
-Moduł integracji z zewnętrznymi API dla wzbogacenia danych o urządzeniach.
+External API integration for enriching device data.
 
-Obsługuje:
-- VirusTotal API: Sprawdzanie reputacji IP, domen, hashów
-- Shodan API: Wyszukiwanie informacji o urządzeniach w internecie
+Provides:
+- VirusTotal API: IP, domain, and hash reputation checks
+- Shodan API: Device and host information lookup
 
-Wymagane API keys (opcjonalne, ale zalecane):
-- VIRUSTOTAL_API_KEY: https://www.virustotal.com/gui/join-us
-- SHODAN_API_KEY: https://account.shodan.io/register
+Optional API keys (recommended): VIRUSTOTAL_API_KEY, SHODAN_API_KEY.
 """
 
 import os
@@ -26,7 +24,6 @@ except ImportError:
 
 try:
     from dotenv import load_dotenv
-    # Załaduj .env z katalogu projektu
     project_dir = Path(__file__).parent.parent
     env_file = project_dir / ".env"
     if env_file.exists():
@@ -39,7 +36,7 @@ except ImportError:
 # API Keys
 VIRUSTOTAL_API_KEY = os.getenv("VIRUSTOTAL_API_KEY")
 SHODAN_API_KEY = os.getenv("SHODAN_API_KEY")
-# MISP API - nie jest zaimplementowane (placeholder)
+# MISP API – not implemented (placeholder)
 # MISP_API_KEY = os.getenv("MISP_API_KEY")
 # MISP_URL = os.getenv("MISP_URL")
 
@@ -55,15 +52,10 @@ SHODAN_CACHE = CACHE_DIR / "shodan_cache.json"
 
 
 class VirusTotalAPI:
-    """Integracja z VirusTotal API do sprawdzania reputacji IP, domen, hashów."""
+    """VirusTotal API integration for IP, domain, and hash reputation."""
     
     def __init__(self, api_key: Optional[str] = None):
-        """
-        Inicjalizuje VirusTotal API.
-        
-        Args:
-            api_key: Klucz API VirusTotal (opcjonalny, można też ustawić w .env)
-        """
+        """Initialize VirusTotal API. api_key can also be set in .env."""
         self.api_key = api_key or VIRUSTOTAL_API_KEY
         self.base_url = "https://www.virustotal.com/api/v3"
         self.cache = self._load_cache()
@@ -72,7 +64,7 @@ class VirusTotalAPI:
         self.request_window_start = time.time()
         
     def _load_cache(self) -> Dict:
-        """Ładuje cache z pliku."""
+        """Load cache from file."""
         if VIRUSTOTAL_CACHE.exists():
             try:
                 with open(VIRUSTOTAL_CACHE, 'r', encoding='utf-8') as f:
@@ -82,23 +74,19 @@ class VirusTotalAPI:
         return {}
     
     def _save_cache(self):
-        """Zapisuje cache do pliku."""
+        """Save cache to file."""
         try:
             with open(VIRUSTOTAL_CACHE, 'w', encoding='utf-8') as f:
                 json.dump(self.cache, f, indent=2)
         except Exception as e:
-            print(f"⚠️  Błąd zapisu cache VirusTotal: {e}")
+            print(f"⚠️  VirusTotal cache write error: {e}")
     
     def _rate_limit(self):
-        """Obsługuje rate limiting dla VirusTotal API."""
+        """Apply rate limiting for VirusTotal API."""
         current_time = time.time()
-        
-        # Resetuj licznik co minutę
         if current_time - self.request_window_start >= 60:
             self.request_count = 0
             self.request_window_start = current_time
-        
-        # Sprawdź limit
         if self.request_count >= VIRUSTOTAL_RATE_LIMIT:
             wait_time = 60 - (current_time - self.request_window_start)
             if wait_time > 0:
@@ -109,26 +97,14 @@ class VirusTotalAPI:
         self.request_count += 1
     
     def check_ip(self, ip_address: str) -> Optional[Dict[str, Any]]:
-        """
-        Sprawdza reputację adresu IP w VirusTotal.
-        
-        Args:
-            ip_address: Adres IP do sprawdzenia
-        
-        Returns:
-            Słownik z wynikami lub None jeśli błąd
-        """
+        """Check IP reputation in VirusTotal. Returns result dict or None on error."""
         if not self.api_key:
             return None
-        
         if not REQUESTS_AVAILABLE:
             return None
-        
-        # Sprawdź cache
         cache_key = f"ip_{ip_address}"
         if cache_key in self.cache:
             cached_data = self.cache[cache_key]
-            # Cache ważny przez 24h
             if time.time() - cached_data.get('timestamp', 0) < 86400:
                 return cached_data.get('data')
         
@@ -151,7 +127,6 @@ class VirusTotalAPI:
                 analysis_stats = attributes.get('last_analysis_stats', {})
                 analysis_results = attributes.get('last_analysis_results', {})
                 
-                # Zbierz szczegóły detekcji (które antywirusy wykryły zagrożenie)
                 detections = []
                 if analysis_results:
                     for engine_name, result in analysis_results.items():
@@ -173,7 +148,7 @@ class VirusTotalAPI:
                     'asn': attributes.get('asn', None),
                     'country': attributes.get('country', None),
                     'network': attributes.get('network', None),
-                    'detections': detections,  # Szczegóły detekcji
+                    'detections': detections,
                     'last_analysis_date': attributes.get('last_analysis_date', None),
                     'whois': attributes.get('whois', None),
                 }
@@ -188,13 +163,13 @@ class VirusTotalAPI:
                 return result
             elif response.status_code == 401:
                 error_msg = response.json().get('error', {}).get('message', 'Invalid API key')
-                print(f"⚠️  VirusTotal: Nieprawidłowy klucz API - {error_msg}")
-                print(f"   Sprawdź swój klucz API na: https://www.virustotal.com/gui/join-us")
+                print(f"⚠️  VirusTotal: Invalid API key – {error_msg}")
+                print(f"   Check your API key at: https://www.virustotal.com/gui/join-us")
                 return None
             elif response.status_code == 403:
                 error_msg = response.json().get('error', {}).get('message', 'Forbidden')
-                print(f"⚠️  VirusTotal: Brak uprawnień - {error_msg}")
-                print(f"   Sprawdź swój klucz API i limity na: https://www.virustotal.com/gui/join-us")
+                print(f"⚠️  VirusTotal: Access denied – {error_msg}")
+                print(f"   Check API key and limits at: https://www.virustotal.com/gui/join-us")
                 return None
             elif response.status_code == 429:
                 print(f"⚠️  VirusTotal: Rate limit exceeded, waiting...")
@@ -211,19 +186,11 @@ class VirusTotalAPI:
                 return None
                 
         except Exception as e:
-            print(f"⚠️  Błąd VirusTotal API: {e}")
+            print(f"⚠️  VirusTotal API error: {e}")
             return None
     
     def get_reputation_summary(self, ip_address: str) -> str:
-        """
-        Zwraca czytelne podsumowanie reputacji IP.
-        
-        Args:
-            ip_address: Adres IP
-        
-        Returns:
-            String z podsumowaniem
-        """
+        """Return a short human-readable reputation summary for the IP."""
         result = self.check_ip(ip_address)
         if not result:
             return "No data available"
@@ -244,23 +211,18 @@ class VirusTotalAPI:
 
 
 class ShodanAPI:
-    """Integracja z Shodan API do wyszukiwania informacji o urządzeniach."""
+    """Shodan API integration for device/host lookup."""
     
     def __init__(self, api_key: Optional[str] = None):
-        """
-        Inicjalizuje Shodan API.
-        
-        Args:
-            api_key: Klucz API Shodan (opcjonalny, można też ustawić w .env)
-        """
+        """Initialize Shodan API. api_key can also be set in .env."""
         self.api_key = api_key or SHODAN_API_KEY
         self.base_url = "https://api.shodan.io"
         self.cache = self._load_cache()
         self.last_request_time = 0
-        self.error_cache = {}  # Cache błędów aby nie wyświetlać ich wielokrotnie
+        self.error_cache = {}
         
     def _load_cache(self) -> Dict:
-        """Ładuje cache z pliku."""
+        """Load cache from file."""
         if SHODAN_CACHE.exists():
             try:
                 with open(SHODAN_CACHE, 'r', encoding='utf-8') as f:
@@ -270,15 +232,15 @@ class ShodanAPI:
         return {}
     
     def _save_cache(self):
-        """Zapisuje cache do pliku."""
+        """Save cache to file."""
         try:
             with open(SHODAN_CACHE, 'w', encoding='utf-8') as f:
                 json.dump(self.cache, f, indent=2)
         except Exception as e:
-            print(f"⚠️  Błąd zapisu cache Shodan: {e}")
+            print(f"⚠️  Shodan cache write error: {e}")
     
     def _rate_limit(self):
-        """Obsługuje rate limiting dla Shodan API."""
+        """Apply rate limiting for Shodan API."""
         current_time = time.time()
         time_since_last = current_time - self.last_request_time
         
@@ -289,17 +251,7 @@ class ShodanAPI:
         self.last_request_time = time.time()
     
     def _is_private_ip(self, ip_address: str) -> bool:
-        """
-        Sprawdza czy IP jest prywatne (RFC 1918).
-        
-        Shodan działa tylko dla publicznych IP, więc prywatne IP są pomijane.
-        
-        Args:
-            ip_address: Adres IP do sprawdzenia
-        
-        Returns:
-            True jeśli IP jest prywatne
-        """
+        """Return True if IP is private (RFC 1918). Shodan only supports public IPs."""
         try:
             parts = ip_address.split('.')
             if len(parts) != 4:
@@ -333,30 +285,16 @@ class ShodanAPI:
             return False
     
     def host_info(self, ip_address: str) -> Optional[Dict[str, Any]]:
-        """
-        Pobiera informacje o hoście z Shodan.
-        
-        Args:
-            ip_address: Adres IP do sprawdzenia
-        
-        Returns:
-            Słownik z wynikami lub None jeśli błąd
-        """
+        """Fetch host info from Shodan. Returns result dict or None. Private IPs are skipped."""
         if not self.api_key:
             return None
-        
         if not REQUESTS_AVAILABLE:
             return None
-        
-        # Shodan działa tylko dla publicznych IP - pomiń prywatne IP
         if self._is_private_ip(ip_address):
-            return None  # Cicho pomiń prywatne IP
-        
-        # Sprawdź cache
+            return None
         cache_key = f"host_{ip_address}"
         if cache_key in self.cache:
             cached_data = self.cache[cache_key]
-            # Cache ważny przez 7 dni
             if time.time() - cached_data.get('timestamp', 0) < 604800:
                 return cached_data.get('data')
         
@@ -384,16 +322,13 @@ class ShodanAPI:
                     'services': []
                 }
                 
-                # Wyciągnij informacje o usługach
-                for service in data.get('data', [])[:5]:  # Max 5 usług
+                for service in data.get('data', [])[:5]:
                     result['services'].append({
                         'port': service.get('port'),
                         'product': service.get('product'),
                         'version': service.get('version'),
-                        'banner': service.get('data', '')[:100]  # Pierwsze 100 znaków
+                        'banner': service.get('data', '')[:100]
                     })
-                
-                # Zapisz do cache
                 self.cache[cache_key] = {
                     'data': result,
                     'timestamp': time.time()
@@ -402,32 +337,27 @@ class ShodanAPI:
                 
                 return result
             elif response.status_code == 401:
-                # Wyświetl błąd tylko raz (cache błędów)
                 if '401' not in self.error_cache:
                     error_msg = response.json().get('error', 'Invalid API key')
-                    print(f"⚠️  Shodan: Nieprawidłowy klucz API - {error_msg}")
-                    print(f"   Sprawdź swój klucz API na: https://account.shodan.io/register")
+                    print(f"⚠️  Shodan: Invalid API key – {error_msg}")
+                    print(f"   Check your API key at: https://account.shodan.io/register")
                     self.error_cache['401'] = True
                 return None
             elif response.status_code == 403:
-                # Wyświetl błąd tylko raz (cache błędów)
                 if '403' not in self.error_cache:
                     error_msg = response.json().get('error', 'Forbidden')
-                    print(f"⚠️  Shodan: Brak uprawnień - {error_msg}")
-                    print(f"   💡 Shodan wymaga płatnego konta dla pełnej funkcjonalności")
-                    print(f"   💡 Prywatne IP (192.168.x.x) są automatycznie pomijane")
-                    print(f"   Sprawdź limity na: https://account.shodan.io/")
+                    print(f"⚠️  Shodan: Access denied – {error_msg}")
+                    print(f"   💡 Shodan requires a paid account for full access")
+                    print(f"   💡 Private IPs (192.168.x.x) are skipped automatically")
+                    print(f"   Check limits at: https://account.shodan.io/")
                     self.error_cache['403'] = True
                 return None
             elif response.status_code == 429:
-                # Wyświetl błąd tylko raz (cache błędów)
                 if '429' not in self.error_cache:
-                    print("⚠️  Shodan: Rate limit exceeded - czekam...")
+                    print("⚠️  Shodan: Rate limit exceeded – waiting...")
                     self.error_cache['429'] = True
                 return None
             elif response.status_code == 400:
-                # "Invalid IP" - prawdopodobnie prywatne IP (powinno być już odfiltrowane, ale na wszelki wypadek)
-                # Cicho pomiń - nie wyświetlaj błędu
                 return None
             else:
                 error_msg = "Unknown error"
@@ -436,31 +366,20 @@ class ShodanAPI:
                     error_msg = error_data.get('error', f"Status code: {response.status_code}")
                 except:
                     error_msg = f"Status code: {response.status_code}"
-                # Wyświetl błąd tylko raz (cache błędów)
                 error_key = f"other_{response.status_code}"
                 if error_key not in self.error_cache:
                     print(f"⚠️  Shodan API: {error_msg}")
                     self.error_cache[error_key] = True
                 return None
-                
         except Exception as e:
-            # Wyświetl błąd tylko raz (cache błędów)
             error_key = f"exception_{type(e).__name__}"
             if error_key not in self.error_cache:
-                print(f"⚠️  Błąd Shodan API: {e}")
+                print(f"⚠️  Shodan API error: {e}")
                 self.error_cache[error_key] = True
             return None
     
     def get_host_summary(self, ip_address: str) -> str:
-        """
-        Zwraca czytelne podsumowanie informacji o hoście.
-        
-        Args:
-            ip_address: Adres IP
-        
-        Returns:
-            String z podsumowaniem
-        """
+        """Return a short human-readable host summary."""
         result = self.host_info(ip_address)
         if not result:
             return "No data available"
@@ -479,55 +398,31 @@ class ShodanAPI:
 
 
 class ExternalAPIs:
-    """
-    Główna klasa zarządzająca wszystkimi integracjami zewnętrznymi.
-    
-    Użycie:
-        apis = ExternalAPIs()
-        vt_result = apis.virustotal.check_ip("192.168.1.1")
-        shodan_result = apis.shodan.host_info("192.168.1.1")
-    """
+    """Main class for all external API integrations (VirusTotal, Shodan)."""
     
     def __init__(self):
-        """Inicjalizuje wszystkie dostępne API."""
+        """Initialize available APIs."""
         self.virustotal = VirusTotalAPI() if VIRUSTOTAL_API_KEY else None
         self.shodan = ShodanAPI() if SHODAN_API_KEY else None
-        
-        # Wyświetl status
         if self.virustotal:
-            print("✅ VirusTotal API dostępne")
+            print("✅ VirusTotal API available")
         else:
-            print("⚠️  VirusTotal API niedostępne (brak klucza)")
-        
+            print("⚠️  VirusTotal API unavailable (no key)")
         if self.shodan:
-            print("✅ Shodan API dostępne")
+            print("✅ Shodan API available")
         else:
-            print("⚠️  Shodan API niedostępne (brak klucza)")
+            print("⚠️  Shodan API unavailable (no key)")
     
     def enrich_device(self, device_ip: Optional[str] = None, device_mac: Optional[str] = None) -> Dict[str, Any]:
-        """
-        Wzbogaca informacje o urządzeniu używając zewnętrznych API.
-        
-        Args:
-            device_ip: Adres IP urządzenia
-            device_mac: Adres MAC urządzenia (opcjonalnie)
-        
-        Returns:
-            Słownik z wzbogaconymi danymi
-        """
+        """Enrich device info using external APIs. Returns dict with virustotal/shodan data."""
         enriched_data = {
             'virustotal': None,
             'shodan': None
         }
-        
         if device_ip:
-            # VirusTotal (działa dla wszystkich IP)
             if self.virustotal:
                 enriched_data['virustotal'] = self.virustotal.check_ip(device_ip)
-            
-            # Shodan (tylko dla publicznych IP - prywatne są automatycznie pomijane)
             if self.shodan:
-                # host_info() automatycznie pomija prywatne IP
                 enriched_data['shodan'] = self.shodan.host_info(device_ip)
         
         return enriched_data

@@ -1,16 +1,9 @@
 #!/usr/bin/env python3
 """
-Moduł eksportu danych do systemów SIEM (Security Information and Event Management).
+SIEM (Security Information and Event Management) export.
 
-Obsługuje formaty:
-- CEF (Common Event Format) - Splunk, ArcSight, QRadar
-- JSON Lines - ELK Stack (Elasticsearch, Logstash, Kibana)
-- Syslog - QRadar, inne SIEM
-- CSV - uniwersalny format
-
-UŻYCIE:
-    exporter = SIEMExporter(format='cef', output_file='siem_export.cef')
-    exporter.export_devices(devices)
+Formats: CEF (Splunk, ArcSight, QRadar), JSON Lines (ELK), Syslog, CSV.
+Usage: SIEMExporter(format='cef', output_file='siem_export.cef'); exporter.export_devices(devices)
 """
 
 import json
@@ -24,7 +17,7 @@ from device import Device
 
 
 class SIEMFormat(Enum):
-    """Formaty eksportu SIEM."""
+    """SIEM export formats."""
     CEF = "cef"
     JSON_LINES = "jsonl"
     SYSLOG = "syslog"
@@ -32,27 +25,11 @@ class SIEMFormat(Enum):
 
 
 class SIEMExporter:
-    """
-    Eksporter danych do systemów SIEM.
-    
-    Eksportuje dane o urządzeniach w różnych formatach:
-    - CEF (Common Event Format) - standardowy format dla SIEM
-    - JSON Lines - dla ELK Stack
-    - Syslog - dla QRadar i innych
-    - CSV - uniwersalny format
-    """
+    """Export device data to SIEM in CEF, JSON Lines, Syslog, or CSV."""
     
     def __init__(self, format: str = "cef", output_file: Optional[str] = None, 
                  syslog_host: Optional[str] = None, syslog_port: int = 514):
-        """
-        Inicjalizacja eksportera SIEM.
-        
-        Args:
-            format: Format eksportu ('cef', 'jsonl', 'syslog', 'csv')
-            output_file: Ścieżka do pliku wyjściowego (None = stdout)
-            syslog_host: Host syslog (tylko dla formatu syslog)
-            syslog_port: Port syslog (tylko dla formatu syslog)
-        """
+        """format: 'cef'|'jsonl'|'syslog'|'csv'; output_file: path or None for stdout; syslog_host/port for syslog."""
         self.format = SIEMFormat(format.lower())
         self.output_file = output_file
         self.syslog_host = syslog_host
@@ -60,16 +37,7 @@ class SIEMExporter:
         self.output_lines = []
     
     def export_devices(self, devices: List[Device], scan_timestamp: Optional[str] = None) -> str:
-        """
-        Eksportuje listę urządzeń do wybranego formatu SIEM.
-        
-        Args:
-            devices: Lista urządzeń Device do eksportu
-            scan_timestamp: Timestamp skanowania (opcjonalne)
-        
-        Returns:
-            Ścieżka do wygenerowanego pliku lub stdout
-        """
+        """Export device list to selected SIEM format. Returns output path or 'stdout'."""
         if not scan_timestamp:
             scan_timestamp = datetime.now().isoformat()
         
@@ -82,26 +50,12 @@ class SIEMExporter:
         elif self.format == SIEMFormat.CSV:
             return self._export_csv(devices, scan_timestamp)
         else:
-            raise ValueError(f"Nieobsługiwany format: {self.format}")
+            raise ValueError(f"Unsupported format: {self.format}")
     
     def _export_cef(self, devices: List[Device], timestamp: str) -> str:
-        """
-        Eksportuje urządzenia w formacie CEF (Common Event Format).
-        
-        Format CEF:
-        CEF:Version|Device Vendor|Device Product|Device Version|Signature ID|Name|Severity|Extension
-        
-        Args:
-            devices: Lista urządzeń
-            timestamp: Timestamp skanowania
-        
-        Returns:
-            Ścieżka do pliku lub stdout
-        """
+        """Export devices as CEF (Common Event Format). Returns file path or 'stdout'."""
         lines = []
-        
         for device in devices:
-            # Określ severity na podstawie security score
             severity = self._calculate_severity(device.security_score)
             
             # Extension fields (key=value pairs)
@@ -130,16 +84,7 @@ class SIEMExporter:
         return self._write_output(lines)
     
     def _export_json_lines(self, devices: List[Device], timestamp: str) -> str:
-        """
-        Eksportuje urządzenia w formacie JSON Lines (dla ELK Stack).
-        
-        Args:
-            devices: Lista urządzeń
-            timestamp: Timestamp skanowania
-        
-        Returns:
-            Ścieżka do pliku lub stdout
-        """
+        """Export devices as JSON Lines (for ELK Stack). Returns file path or 'stdout'."""
         lines = []
         
         for device in devices:
@@ -177,18 +122,7 @@ class SIEMExporter:
         return self._write_output(lines)
     
     def _export_syslog(self, devices: List[Device], timestamp: str) -> str:
-        """
-        Eksportuje urządzenia w formacie Syslog.
-        
-        Format: <PRI>timestamp hostname tag: message
-        
-        Args:
-            devices: Lista urządzeń
-            timestamp: Timestamp skanowania
-        
-        Returns:
-            Ścieżka do pliku lub stdout
-        """
+        """Export devices as Syslog. Returns file path or 'stdout'."""
         lines = []
         hostname = "medical-scanner"
         
@@ -212,23 +146,14 @@ class SIEMExporter:
             syslog_line = f"<{priority}>{timestamp} {hostname} medical-scanner: {message}"
             lines.append(syslog_line)
         
-        # Jeśli podano syslog host, wyślij przez socket
+        # If syslog host given, send over socket
         if self.syslog_host:
             self._send_syslog(lines)
         
         return self._write_output(lines)
     
     def _export_csv(self, devices: List[Device], timestamp: str) -> str:
-        """
-        Eksportuje urządzenia w formacie CSV.
-        
-        Args:
-            devices: Lista urządzeń
-            timestamp: Timestamp skanowania
-        
-        Returns:
-            Ścieżka do pliku lub stdout
-        """
+        """Export devices as CSV. Returns file path or 'stdout'."""
         if not self.output_file:
             self.output_file = f"siem_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
         
@@ -265,14 +190,7 @@ class SIEMExporter:
     
     def _write_output(self, lines: List[str]) -> str:
         """
-        Zapisuje linie do pliku lub stdout.
-        
-        Args:
-            lines: Lista linii do zapisania
-        
-        Returns:
-            Ścieżka do pliku lub 'stdout'
-        """
+        Write lines to file or stdout. Returns path or 'stdout'."""
         if self.output_file:
             with open(self.output_file, 'w', encoding='utf-8') as f:
                 f.write('\n'.join(lines))
@@ -284,11 +202,7 @@ class SIEMExporter:
     
     def _send_syslog(self, lines: List[str]):
         """
-        Wysyła linie syslog przez socket.
-        
-        Args:
-            lines: Lista linii syslog
-        """
+        Send syslog lines over socket."""
         try:
             import socket
             sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -298,18 +212,10 @@ class SIEMExporter:
             
             sock.close()
         except Exception as e:
-            print(f"⚠️  Błąd wysyłania syslog: {e}")
+            print(f"⚠️  Syslog send error: {e}")
     
     def _calculate_severity(self, security_score: int) -> str:
-        """
-        Oblicza severity na podstawie security score.
-        
-        Args:
-            security_score: Security score (0-100)
-        
-        Returns:
-            Severity ('Low', 'Medium', 'High', 'Critical')
-        """
+        """Compute severity from security score (0-100). Returns 'Low'|'Medium'|'High'|'Critical'."""
         if security_score >= 80:
             return "Low"
         elif security_score >= 50:
@@ -320,15 +226,7 @@ class SIEMExporter:
             return "Critical"
     
     def _severity_to_syslog_num(self, severity: str) -> int:
-        """
-        Konwertuje severity na numer syslog.
-        
-        Args:
-            severity: Severity string
-        
-        Returns:
-            Numer severity syslog (0-7)
-        """
+        """Map severity to syslog priority number (0-7)."""
         mapping = {
             "Low": 6,      # Informational
             "Medium": 4,   # Warning
@@ -339,41 +237,19 @@ class SIEMExporter:
     
     def _escape_cef_value(self, value: str) -> str:
         """
-        Escapuje wartość dla formatu CEF.
-        
-        Args:
-            value: Wartość do escapowania
-        
-        Returns:
-            Escapowana wartość
-        """
-        # CEF wymaga escapowania: \ = \\, | = \|, \n = \\n
+        Escape value for CEF format."""
         return value.replace('\\', '\\\\').replace('|', '\\|').replace('\n', '\\n')
 
 
 def export_to_siem(devices: List[Device], format: str = "cef", 
                    output_file: Optional[str] = None, **kwargs) -> str:
-    """
-    Funkcja pomocnicza do eksportu do SIEM.
-    
-    Args:
-        devices: Lista urządzeń
-        format: Format eksportu ('cef', 'jsonl', 'syslog', 'csv')
-        output_file: Ścieżka do pliku wyjściowego
-        **kwargs: Dodatkowe parametry (syslog_host, syslog_port)
-    
-    Returns:
-        Ścieżka do wygenerowanego pliku
-    """
+    """Helper: export devices to SIEM. Returns output path."""
     exporter = SIEMExporter(format=format, output_file=output_file, **kwargs)
     return exporter.export_devices(devices)
 
 
 if __name__ == "__main__":
-    # Test eksportera
     from device import Device, DeviceType, Protocol
-    
-    # Przykładowe urządzenie
     test_device = Device(
         mac_address="00:11:22:33:44:55",
         name="Test Medical Device",
@@ -387,10 +263,8 @@ if __name__ == "__main__":
             "open_ports": [80, 443, 22]
         }
     )
-    test_device.add_vulnerability("HTTP bez HTTPS")
+    test_device.add_vulnerability("HTTP without HTTPS")
     test_device.calculate_security_score()
-    
-    # Test różnych formatów
     print("=== Test CEF ===")
     export_to_siem([test_device], format="cef", output_file="test_cef.cef")
     
@@ -400,4 +274,4 @@ if __name__ == "__main__":
     print("\n=== Test CSV ===")
     export_to_siem([test_device], format="csv", output_file="test_csv.csv")
     
-    print("\n✅ Test zakończony!")
+    print("\n✅ Test completed!")

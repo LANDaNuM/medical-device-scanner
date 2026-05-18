@@ -1,12 +1,6 @@
 #!/usr/bin/env python3
 """
-Moduł do szczegółowej analizy szyfrowania urządzeń medycznych.
-
-Ten moduł:
-- Analizuje algorytmy szyfrowania używane przez urządzenia
-- Wykrywa słabe algorytmy i przestarzałe standardy
-- Generuje rekomendacje ulepszeń
-- Ocenia siłę szyfrowania
+Encryption analysis for medical devices: detect weak/legacy algorithms, generate improvement recommendations, score strength.
 """
 
 from dataclasses import dataclass
@@ -21,57 +15,44 @@ console = Console()
 
 
 class EncryptionStrength(Enum):
-    """Siła szyfrowania"""
-    STRONG = "strong"  # Silne szyfrowanie
-    MODERATE = "moderate"  # Umiarkowane szyfrowanie
-    WEAK = "weak"  # Słabe szyfrowanie
-    NONE = "none"  # Brak szyfrowania
-    UNKNOWN = "unknown"  # Nieznane
+    """Encryption strength."""
+    STRONG = "strong"
+    MODERATE = "moderate"
+    WEAK = "weak"
+    NONE = "none"
+    UNKNOWN = "unknown"
 
 
 @dataclass
 class EncryptionAnalysis:
-    """
-    Wynik analizy szyfrowania urządzenia.
-    """
-    encryption_type: str  # Typ szyfrowania (np. "AES-128", "TLS 1.2")
-    strength: EncryptionStrength  # Siła szyfrowania
-    is_weak: bool  # Czy szyfrowanie jest słabe
-    issues: List[str]  # Lista problemów z szyfrowaniem
-    recommendations: List[str]  # Rekomendacje ulepszeń
-    score: int  # Wynik szyfrowania (0-100)
+    """Result of device encryption analysis."""
+    encryption_type: str
+    strength: EncryptionStrength
+    is_weak: bool
+    issues: List[str]
+    recommendations: List[str]
+    score: int
 
 
 class EncryptionAnalyzer:
-    """
-    Klasa do analizy szyfrowania urządzeń medycznych.
-    """
-    
-    # Słabe algorytmy i przestarzałe standardy
+    """Analyzes encryption of medical devices."""
     WEAK_ALGORITHMS = [
         "DES", "3DES", "RC4", "MD5", "SHA1", "RSA-1024",
         "TLS 1.0", "TLS 1.1", "SSL 2.0", "SSL 3.0",
         "WEP", "WPA", "WPA2-TKIP"
     ]
     
-    # Umiarkowane algorytmy (akceptowalne, ale można lepiej)
     MODERATE_ALGORITHMS = [
         "AES-128", "RSA-2048", "TLS 1.2", "WPA2-CCMP"
     ]
-    
-    # Silne algorytmy (zalecane)
     STRONG_ALGORITHMS = [
         "AES-256", "ChaCha20-Poly1305", "TLS 1.3", "WPA3",
         "RSA-4096", "ECDSA", "Ed25519"
     ]
     
-    # Mapowanie typów szyfrowania do siły
     ENCRYPTION_STRENGTH_MAP = {
-        # Brak szyfrowania
         "No encryption": EncryptionStrength.NONE,
         "Brak szyfrowania": EncryptionStrength.NONE,
-        
-        # Słabe
         "DES": EncryptionStrength.WEAK,
         "3DES": EncryptionStrength.WEAK,
         "RC4": EncryptionStrength.WEAK,
@@ -80,14 +61,10 @@ class EncryptionAnalyzer:
         "SSL": EncryptionStrength.WEAK,
         "WEP": EncryptionStrength.WEAK,
         "WPA": EncryptionStrength.WEAK,
-        
-        # Umiarkowane
         "AES-128": EncryptionStrength.MODERATE,
         "TLS 1.2": EncryptionStrength.MODERATE,
         "WPA2": EncryptionStrength.MODERATE,
         "HTTPS": EncryptionStrength.MODERATE,
-        
-        # Silne
         "AES-256": EncryptionStrength.STRONG,
         "TLS 1.3": EncryptionStrength.STRONG,
         "WPA3": EncryptionStrength.STRONG,
@@ -95,93 +72,65 @@ class EncryptionAnalyzer:
     }
     
     def analyze(self, encryption_type: Optional[str], has_encryption: bool) -> EncryptionAnalysis:
-        """
-        Analizuje szyfrowanie urządzenia.
-        
-        Args:
-            encryption_type: Typ szyfrowania (np. "AES-128", "TLS 1.2")
-            has_encryption: Czy urządzenie ma szyfrowanie
-        
-        Returns:
-            Obiekt EncryptionAnalysis z wynikami analizy
-        """
-        # Jeśli brak szyfrowania
+        """Analyze device encryption. Returns EncryptionAnalysis."""
         if not has_encryption or not encryption_type:
             return EncryptionAnalysis(
                 encryption_type="No encryption",
                 strength=EncryptionStrength.NONE,
                 is_weak=True,
-                issues=["Brak szyfrowania - wszystkie dane przesyłane jawnie"],
+                issues=["No encryption – all data sent in clear"],
                 recommendations=[
-                    "Włącz szyfrowanie dla wszystkich połączeń",
-                    "Użyj TLS 1.3 lub TLS 1.2 minimum",
-                    "Dla BLE: użyj LE Secure Connections (AES-256)",
-                    "Dla WiFi: użyj WPA3 lub WPA2 z AES-CCMP"
+                    "Enable encryption for all connections",
+                    "Use TLS 1.3 or at least TLS 1.2",
+                    "For BLE: use LE Secure Connections (AES-256)",
+                    "For WiFi: use WPA3 or WPA2 with AES-CCMP"
                 ],
                 score=0
             )
-        
         encryption_type_lower = encryption_type.lower()
         issues = []
         recommendations = []
         strength = EncryptionStrength.UNKNOWN
         is_weak = False
-        
-        # Sprawdź siłę szyfrowania
         for key, value in self.ENCRYPTION_STRENGTH_MAP.items():
             if key.lower() in encryption_type_lower:
                 strength = value
                 break
-        
-        # Jeśli nie znaleziono w mapie, spróbuj wykryć po nazwie
         if strength == EncryptionStrength.UNKNOWN:
             strength = self._detect_strength_from_name(encryption_type)
-        
-        # Sprawdź słabe algorytmy
         for weak_alg in self.WEAK_ALGORITHMS:
             if weak_alg.lower() in encryption_type_lower:
                 is_weak = True
-                issues.append(f"Używa słabego algorytmu: {weak_alg}")
+                issues.append(f"Uses weak algorithm: {weak_alg}")
                 recommendations.extend(self._get_recommendations_for_weak_algorithm(weak_alg))
-        
-        # Sprawdź umiarkowane algorytmy
         if strength == EncryptionStrength.MODERATE:
-            issues.append("Używa umiarkowanego szyfrowania - można ulepszyć")
+            issues.append("Uses moderate encryption – can be improved")
             recommendations.extend([
-                "Rozważ uaktualnienie do AES-256",
-                "Użyj TLS 1.3 zamiast TLS 1.2",
-                "Dla BLE: rozważ LE Secure Connections"
+                "Consider upgrading to AES-256",
+                "Use TLS 1.3 instead of TLS 1.2",
+                "For BLE: consider LE Secure Connections"
             ])
-        
-        # Sprawdź specyficzne problemy
         if "tls 1.0" in encryption_type_lower or "tls 1.1" in encryption_type_lower:
             is_weak = True
-            issues.append("Używa przestarzałej wersji TLS (1.0/1.1) - podatna na ataki")
-            recommendations.append("Uaktualnij do TLS 1.3 lub minimum TLS 1.2")
-        
+            issues.append("Uses legacy TLS (1.0/1.1) – vulnerable")
+            recommendations.append("Upgrade to TLS 1.3 or at least TLS 1.2")
         if "ssl" in encryption_type_lower and "tls" not in encryption_type_lower:
             is_weak = True
-            issues.append("Używa przestarzałego SSL - bardzo niebezpieczne")
-            recommendations.append("Natychmiast uaktualnij do TLS 1.3")
-        
-        if "wep" in encryption_type_lower or "wpa" in encryption_type_lower and "wpa2" not in encryption_type_lower and "wpa3" not in encryption_type_lower:
+            issues.append("Uses legacy SSL – very unsafe")
+            recommendations.append("Upgrade to TLS 1.3 immediately")
+        if "wep" in encryption_type_lower or ("wpa" in encryption_type_lower and "wpa2" not in encryption_type_lower and "wpa3" not in encryption_type_lower):
             is_weak = True
-            issues.append("Używa przestarzałego standardu WiFi (WEP/WPA) - łatwe do złamania")
-            recommendations.append("Uaktualnij do WPA3 lub minimum WPA2 z AES-CCMP")
-        
+            issues.append("Uses legacy WiFi (WEP/WPA) – easy to break")
+            recommendations.append("Upgrade to WPA3 or at least WPA2 with AES-CCMP")
         if "aes-128" in encryption_type_lower:
-            issues.append("AES-128 jest akceptowalne, ale AES-256 jest bardziej bezpieczne")
-            recommendations.append("Rozważ uaktualnienie do AES-256 dla lepszego bezpieczeństwa")
-        
-        # Oblicz wynik (0-100)
+            issues.append("AES-128 is acceptable but AES-256 is stronger")
+            recommendations.append("Consider upgrading to AES-256 for better security")
         score = self._calculate_encryption_score(strength, is_weak, len(issues))
-        
-        # Jeśli brak rekomendacji, dodaj ogólne
         if not recommendations:
             if strength == EncryptionStrength.STRONG:
-                recommendations.append("Szyfrowanie jest silne - utrzymaj obecną konfigurację")
+                recommendations.append("Encryption is strong – keep current configuration")
             elif strength == EncryptionStrength.MODERATE:
-                recommendations.append("Rozważ uaktualnienie do silniejszych algorytmów")
+                recommendations.append("Consider upgrading to stronger algorithms")
         
         return EncryptionAnalysis(
             encryption_type=encryption_type,
@@ -193,78 +142,43 @@ class EncryptionAnalyzer:
         )
     
     def _detect_strength_from_name(self, encryption_type: str) -> EncryptionStrength:
-        """
-        Wykrywa siłę szyfrowania na podstawie nazwy.
-        
-        Args:
-            encryption_type: Typ szyfrowania
-        
-        Returns:
-            Siła szyfrowania
-        """
+        """Detect encryption strength from type name."""
         encryption_type_lower = encryption_type.lower()
-        
-        # Sprawdź silne
         for strong in ["aes-256", "tls 1.3", "wpa3", "chacha20", "ed25519", "ecdsa"]:
             if strong in encryption_type_lower:
                 return EncryptionStrength.STRONG
-        
-        # Sprawdź umiarkowane
         for moderate in ["aes-128", "tls 1.2", "wpa2", "rsa-2048"]:
             if moderate in encryption_type_lower:
                 return EncryptionStrength.MODERATE
-        
-        # Sprawdź słabe
         for weak in ["des", "rc4", "md5", "sha1", "tls 1.0", "tls 1.1", "ssl", "wep", "wpa"]:
             if weak in encryption_type_lower:
                 return EncryptionStrength.WEAK
         
-        # Jeśli zawiera "network-level" lub "application-level", to umiarkowane
         if "network-level" in encryption_type_lower or "application-level" in encryption_type_lower:
             return EncryptionStrength.MODERATE
         
         return EncryptionStrength.UNKNOWN
     
     def _get_recommendations_for_weak_algorithm(self, algorithm: str) -> List[str]:
-        """
-        Zwraca rekomendacje dla słabego algorytmu.
-        
-        Args:
-            algorithm: Nazwa słabego algorytmu
-        
-        Returns:
-            Lista rekomendacji
-        """
+        """Return recommendations for a weak algorithm."""
         recommendations_map = {
-            "DES": ["Zastąp DES algorytmem AES-256", "DES jest przestarzały i łatwy do złamania"],
-            "3DES": ["Zastąp 3DES algorytmem AES-256", "3DES jest wolny i przestarzały"],
-            "RC4": ["Zastąp RC4 algorytmem ChaCha20-Poly1305 lub AES-GCM", "RC4 ma znane podatności"],
-            "MD5": ["Zastąp MD5 algorytmem SHA-256 lub SHA-3", "MD5 jest podatny na kolizje"],
-            "SHA1": ["Zastąp SHA1 algorytmem SHA-256 lub SHA-3", "SHA1 jest przestarzały"],
-            "RSA-1024": ["Zastąp RSA-1024 kluczem RSA-2048 lub większym", "RSA-1024 jest zbyt słaby"],
-            "TLS 1.0": ["Natychmiast uaktualnij do TLS 1.3", "TLS 1.0 ma znane podatności (POODLE, BEAST)"],
-            "TLS 1.1": ["Natychmiast uaktualnij do TLS 1.3", "TLS 1.1 ma znane podatności"],
-            "SSL": ["Natychmiast uaktualnij do TLS 1.3", "SSL jest całkowicie przestarzały i niebezpieczny"],
-            "WEP": ["Natychmiast uaktualnij do WPA3", "WEP można złamać w kilka minut"],
-            "WPA": ["Uaktualnij do WPA3 lub minimum WPA2", "WPA jest przestarzały"],
-            "WPA2-TKIP": ["Użyj WPA2 z AES-CCMP zamiast TKIP", "TKIP jest słabszy niż AES-CCMP"]
+            "DES": ["Replace DES with AES-256", "DES is obsolete and easy to break"],
+            "3DES": ["Replace 3DES with AES-256", "3DES is slow and obsolete"],
+            "RC4": ["Replace RC4 with ChaCha20-Poly1305 or AES-GCM", "RC4 has known vulnerabilities"],
+            "MD5": ["Replace MD5 with SHA-256 or SHA-3", "MD5 is vulnerable to collisions"],
+            "SHA1": ["Replace SHA1 with SHA-256 or SHA-3", "SHA1 is obsolete"],
+            "RSA-1024": ["Replace RSA-1024 with RSA-2048 or larger", "RSA-1024 is too weak"],
+            "TLS 1.0": ["Upgrade to TLS 1.3 immediately", "TLS 1.0 has known vulnerabilities (POODLE, BEAST)"],
+            "TLS 1.1": ["Upgrade to TLS 1.3 immediately", "TLS 1.1 has known vulnerabilities"],
+            "SSL": ["Upgrade to TLS 1.3 immediately", "SSL is fully obsolete and unsafe"],
+            "WEP": ["Upgrade to WPA3 immediately", "WEP can be broken in minutes"],
+            "WPA": ["Upgrade to WPA3 or at least WPA2", "WPA is obsolete"],
+            "WPA2-TKIP": ["Use WPA2 with AES-CCMP instead of TKIP", "TKIP is weaker than AES-CCMP"]
         }
-        
-        return recommendations_map.get(algorithm, ["Zastąp przestarzałym algorytmem nowoczesnym"])
+        return recommendations_map.get(algorithm, ["Replace legacy algorithm with a modern one"])
     
     def _calculate_encryption_score(self, strength: EncryptionStrength, is_weak: bool, issues_count: int) -> int:
-        """
-        Oblicza wynik szyfrowania (0-100).
-        
-        Args:
-            strength: Siła szyfrowania
-            is_weak: Czy szyfrowanie jest słabe
-            issues_count: Liczba problemów
-        
-        Returns:
-            Wynik szyfrowania (0-100)
-        """
-        # Bazowy wynik na podstawie siły
+        """Compute encryption score (0-100)."""
         base_scores = {
             EncryptionStrength.STRONG: 90,
             EncryptionStrength.MODERATE: 60,
@@ -275,30 +189,15 @@ class EncryptionAnalyzer:
         
         score = base_scores.get(strength, 50)
         
-        # Odejmij punkty za problemy
         score -= issues_count * 10
-        
-        # Jeśli słabe, odejmij dodatkowe punkty
         if is_weak:
             score -= 20
-        
-        # Upewnij się, że wynik jest w zakresie 0-100
         return max(0, min(100, score))
     
     def generate_report(self, analyses: List[EncryptionAnalysis]) -> str:
-        """
-        Generuje raport z analizy szyfrowania.
-        
-        Args:
-            analyses: Lista analiz szyfrowania
-        
-        Returns:
-            Tekst raportu
-        """
+        """Generate encryption analysis report. Returns report text."""
         if not analyses:
-            return "Brak urządzeń do analizy"
-        
-        # Statystyki
+            return "No devices to analyze"
         total = len(analyses)
         strong = sum(1 for a in analyses if a.strength == EncryptionStrength.STRONG)
         moderate = sum(1 for a in analyses if a.strength == EncryptionStrength.MODERATE)
@@ -323,7 +222,6 @@ Summary:
 
 """
         
-        # Urządzenia z problemami
         devices_with_issues = [a for a in analyses if a.issues]
         if devices_with_issues:
             report += "\nDevices with encryption issues:\n"

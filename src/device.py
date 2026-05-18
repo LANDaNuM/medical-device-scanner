@@ -1,8 +1,4 @@
-"""
-Moduł reprezentujący urządzenie medyczne.
-
-Ten moduł definiuje klasę Device, która przechowuje informacje o urządzeniu medycznym.
-"""
+"""Medical device representation. Defines Device class and related enums."""
 
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -11,18 +7,18 @@ from enum import Enum
 
 
 class DeviceType(Enum):
-    """Typy urządzeń medycznych"""
-    GLUCOSE_METER = "glucose_meter"  # Glukometr
-    INSULIN_PUMP = "insulin_pump"    # Pompa insulinowa
-    BLOOD_PRESSURE = "blood_pressure"  # Ciśnieniomierz
-    PULSE_OXIMETER = "pulse_oximeter"  # Pulsoksymetr
-    FITNESS_TRACKER = "fitness_tracker"  # Opaska fitness
-    SMARTWATCH = "smartwatch"  # Smartwatch z funkcjami medycznymi
-    UNKNOWN = "unknown"  # Nieznany typ
+    """Medical device types."""
+    GLUCOSE_METER = "glucose_meter"
+    INSULIN_PUMP = "insulin_pump"
+    BLOOD_PRESSURE = "blood_pressure"
+    PULSE_OXIMETER = "pulse_oximeter"
+    FITNESS_TRACKER = "fitness_tracker"
+    SMARTWATCH = "smartwatch"
+    UNKNOWN = "unknown"
 
 
 class Protocol(Enum):
-    """Protokoły komunikacji"""
+    """Communication protocols."""
     BLE = "BLE"  # Bluetooth Low Energy
     WIFI = "WiFi"
     USB = "USB"
@@ -31,104 +27,61 @@ class Protocol(Enum):
 
 @dataclass
 class Device:
-    """
-    Klasa reprezentująca urządzenie medyczne.
+    """Medical device. Holds name, MAC, type, security info, analysis results."""
     
-    Przechowuje wszystkie informacje o urządzeniu:
-    - Podstawowe dane (nazwa, MAC, typ)
-    - Informacje o bezpieczeństwie
-    - Wyniki analizy
-    """
+    mac_address: str
+    name: str
+    device_type: DeviceType
+    protocol: Protocol
     
-    # Podstawowe informacje
-    mac_address: str  # Adres MAC urządzenia (unikalny identyfikator)
-    name: str  # Nazwa urządzenia
-    device_type: DeviceType  # Typ urządzenia (glukometr, pompa, etc.)
-    protocol: Protocol  # Protokół komunikacji (BLE, WiFi, etc.)
+    has_encryption: bool = False
+    encryption_type: Optional[str] = None
+    requires_pairing: bool = False
+    security_score: int = 0
     
-    # Informacje o bezpieczeństwie
-    has_encryption: bool = False  # Czy używa szyfrowania
-    encryption_type: Optional[str] = None  # Typ szyfrowania (np. "AES-128", "WPA2", "TLS 1.3", "HTTPS")
-    requires_pairing: bool = False  # Czy wymaga parowania
-    security_score: int = 0  # Wynik bezpieczeństwa (0-100)
-    
-    # Dodatkowe informacje
-    rssi: Optional[int] = None  # Siła sygnału (dla Bluetooth)
-    manufacturer: Optional[str] = None  # Producent
-    model: Optional[str] = None  # Model
-    firmware_version: Optional[str] = None  # Wersja firmware
+    rssi: Optional[int] = None
+    manufacturer: Optional[str] = None
+    model: Optional[str] = None
+    firmware_version: Optional[str] = None
     
     # Timestamps
     first_seen: datetime = field(default_factory=datetime.now)
     last_seen: datetime = field(default_factory=datetime.now)
     
-    # Lista znalezionych podatności
     vulnerabilities: List[str] = field(default_factory=list)
-    
-    # Dodatkowe metadane
     metadata: Dict = field(default_factory=dict)
     
     def update_last_seen(self):
-        """Aktualizuje timestamp ostatniego widzenia"""
+        """Update last seen timestamp."""
         self.last_seen = datetime.now()
     
     def calculate_security_score(self) -> int:
-        """
-        Oblicza wynik bezpieczeństwa urządzenia (0-100).
+        """Compute security score 0-100. Starts at 100, subtracts for no encryption (-30), no pairing (-20), each vulnerability (-25)."""
+        score = 100
         
-        Security Score to szybki sposób na ocenę bezpieczeństwa urządzenia.
-        Im wyższy wynik, tym bezpieczniejsze urządzenie.
-        
-        Algorytm:
-        - Startujemy od 100 punktów (idealne bezpieczeństwo)
-        - Odejmujemy punkty za każdą podatność
-        - Brak szyfrowania: -30 punktów (poważna podatność)
-        - Brak wymagania parowania: -20 punktów (średnia podatność)
-        - Każda znana podatność: -25 punktów (dodatkowe podatności)
-        
-        Przykłady:
-        - Urządzenie z szyfrowaniem i parowaniem, bez podatności: 100/100 ✅
-        - Urządzenie bez szyfrowania, z parowaniem: 70/100 ⚠️
-        - Urządzenie bez szyfrowania i parowania: 50/100 ❌
-        - Urządzenie z wieloma podatnościami: <50/100 🔴
-        
-        Returns:
-            Wynik bezpieczeństwa (0-100)
-        """
-        score = 100  # Startujemy od maksymalnego wyniku
-        
-        # Sprawdź szyfrowanie
-        # Brak szyfrowania to poważna podatność - dane mogą być przechwycone
+        # Check encryption
         if not self.has_encryption:
-            score -= 30  # -30 punktów za brak szyfrowania
-        
-        # Sprawdź autoryzację (parowanie)
-        # Brak wymagania parowania oznacza, że każdy może się połączyć
+            score -= 30
         if not self.requires_pairing:
-            score -= 20  # -20 punktów za brak parowania
-        
-        # Sprawdź znane podatności
-        # Każda dodatkowa podatność zmniejsza wynik bezpieczeństwa
+            score -= 20
         score -= len(self.vulnerabilities) * 25
         
-        # Upewnij się, że wynik jest w zakresie 0-100
-        # max(0, ...) - wynik nie może być ujemny
-        # min(100, ...) - wynik nie może przekroczyć 100
+        # Clamp to 0-100
         self.security_score = max(0, min(100, score))
         return self.security_score
     
     def add_vulnerability(self, vulnerability: str):
-        """Dodaje podatność do listy"""
+        """Add vulnerability to list."""
         if vulnerability not in self.vulnerabilities:
             self.vulnerabilities.append(vulnerability)
-            # Przelicz wynik bezpieczeństwa
+            # Recalculate security score
             self.calculate_security_score()
     
     def to_dict(self) -> dict:
-        """Konwertuje urządzenie do słownika (dla JSON/API)"""
+        """Convert device to dict (for JSON/API)."""
         import numpy as np
         
-        # Konwertuj metadata na serializowalne typy
+        # Convert metadata to JSON-serializable types
         metadata_serializable = {}
         if self.metadata:
             for key, value in self.metadata.items():
@@ -139,7 +92,7 @@ class Device:
                 elif isinstance(value, (np.bool_, bool)):
                     metadata_serializable[key] = bool(value)
                 elif isinstance(value, dict):
-                    # Rekurencyjnie konwertuj zagnieżdżone słowniki
+                    # Recursively convert nested dicts
                     metadata_serializable[key] = self._convert_dict_for_json(value)
                 elif isinstance(value, (list, tuple)):
                     metadata_serializable[key] = [self._convert_value_for_json(item) for item in value]
@@ -148,7 +101,7 @@ class Device:
         else:
             metadata_serializable = {}
         
-        # Pobierz IP z metadanych dla łatwiejszej identyfikacji
+        # Get IP from metadata for easier identification
         device_ip = None
         if metadata_serializable:
             device_ip = metadata_serializable.get('ip_address') or metadata_serializable.get('ip')
@@ -156,7 +109,7 @@ class Device:
         return {
             "mac_address": self.mac_address,
             "name": self.name,
-            "display_name": self.get_display_name(),  # Czytelna nazwa
+            "display_name": self.get_display_name(),  # Human-readable name
             "device_fingerprint": self.get_device_fingerprint(),  # Unikalny fingerprint
             "device_type": self.device_type.value,
             "protocol": self.protocol.value,
@@ -168,7 +121,7 @@ class Device:
             "manufacturer": self.manufacturer,
             "model": self.model,
             "firmware_version": self.firmware_version,
-            "ip_address": device_ip,  # Dodaj IP na głównym poziomie dla łatwego dostępu
+            "ip_address": device_ip,
             "first_seen": self.first_seen.isoformat(),
             "last_seen": self.last_seen.isoformat(),
             "vulnerabilities": self.vulnerabilities,
@@ -176,7 +129,7 @@ class Device:
         }
     
     def _convert_value_for_json(self, value):
-        """Konwertuje pojedynczą wartość na typ serializowalny do JSON"""
+        """Convert single value to JSON-serializable type."""
         import numpy as np
         if isinstance(value, (np.integer, np.floating)):
             return value.item()
@@ -192,32 +145,14 @@ class Device:
             return value
     
     def _convert_dict_for_json(self, d: dict) -> dict:
-        """Konwertuje słownik na typy serializowalne do JSON"""
+        """Convert dict to JSON-serializable types."""
         result = {}
         for key, value in d.items():
             result[key] = self._convert_value_for_json(value)
         return result
     
     def get_device_fingerprint(self) -> str:
-        """
-        Generuje unikalny fingerprint urządzenia składający się z wielu cech.
-        
-        Fingerprint jest używany do identyfikacji urządzenia nawet jeśli:
-        - MAC się zmieni (random MAC)
-        - IP się zmieni
-        - Nazwa się zmieni
-        
-        Składa się z:
-        - Protokół
-        - Typ urządzenia
-        - Producent
-        - Model
-        - Ostatnie 6 znaków MAC (dla identyfikacji)
-        - IP (jeśli dostępne)
-        
-        Returns:
-            Unikalny fingerprint urządzenia
-        """
+        """Generate unique device fingerprint (protocol, type, manufacturer, model, MAC suffix, IP)."""
         parts = [
             self.protocol.value,
             self.device_type.value,
@@ -228,11 +163,11 @@ class Device:
         if self.model:
             parts.append(self.model)
         
-        # Dodaj ostatnie 6 znaków MAC (dla identyfikacji)
+        # Add last 6 chars of MAC
         mac_short = self.mac_address.replace(":", "")[-6:].upper()
         parts.append(f"MAC:{mac_short}")
         
-        # Dodaj IP jeśli dostępne (dla WiFi)
+        # Add IP if available (WiFi)
         if self.metadata:
             ip = self.metadata.get('ip_address') or self.metadata.get('ip')
             if ip:
@@ -242,39 +177,31 @@ class Device:
     
     def get_display_name(self) -> str:
         """
-        Zwraca czytelną nazwę urządzenia do wyświetlenia.
-        
-        Priorytet:
-        1. Nazwa urządzenia (jeśli nie jest IP)
-        2. Producent + Model
-        3. Typ urządzenia + MAC/IP
-        4. Protokół + MAC/IP
-        
-        Returns:
-            Czytelna nazwa urządzenia
+        Return a human-readable display name for the device.
+        Priority: device name (if not IP) → manufacturer + model → device type + MAC/IP → protocol + MAC/IP.
         """
         import re
         
-        # Jeśli nazwa to IP, nie używaj jej jako głównej nazwy
+        # If name is IP, do not use as primary name
         is_ip = bool(re.match(r'^(\d{1,3}\.){3}\d{1,3}$', self.name))
         
         if not is_ip and self.name and self.name not in ["Unknown", "Unknown Device"]:
             return self.name
         
-        # Spróbuj producent + model
+        # Try manufacturer + model
         if self.manufacturer and self.model:
             return f"{self.manufacturer} {self.model}"
         elif self.manufacturer:
             return f"{self.manufacturer} Device"
         
-        # Spróbuj typ urządzenia
+        # Try device type
         if self.device_type != DeviceType.UNKNOWN:
             type_names = {
-                DeviceType.GLUCOSE_METER: "Glukometr",
-                DeviceType.INSULIN_PUMP: "Pompa insulinowa",
-                DeviceType.BLOOD_PRESSURE: "Ciśnieniomierz",
-                DeviceType.PULSE_OXIMETER: "Pulsoksymetr",
-                DeviceType.FITNESS_TRACKER: "Opaska fitness",
+                DeviceType.GLUCOSE_METER: "Glucose meter",
+                DeviceType.INSULIN_PUMP: "Insulin pump",
+                DeviceType.BLOOD_PRESSURE: "Blood pressure monitor",
+                DeviceType.PULSE_OXIMETER: "Pulse oximeter",
+                DeviceType.FITNESS_TRACKER: "Fitness tracker",
                 DeviceType.SMARTWATCH: "Smartwatch",
             }
             type_name = type_names.get(self.device_type, self.device_type.value)
@@ -288,21 +215,21 @@ class Device:
             mac_short = self.mac_address.replace(":", "")[-6:].upper()
             return f"{type_name} (MAC: {mac_short})"
         
-        # Ostatnia opcja: protokół + identyfikator
+        # Last resort: protocol + identifier
         if self.metadata:
             ip = self.metadata.get('ip_address') or self.metadata.get('ip')
             if ip:
-                return f"Urządzenie {self.protocol.value} ({ip})"
+                return f"{self.protocol.value} device ({ip})"
         
         mac_short = self.mac_address.replace(":", "")[-6:].upper()
-        return f"Urządzenie {self.protocol.value} (MAC: {mac_short})"
+        return f"{self.protocol.value} device (MAC: {mac_short})"
     
     def __str__(self) -> str:
-        """Reprezentacja tekstowa urządzenia"""
+        """String representation of device."""
         return f"Device({self.name}, {self.device_type.value}, MAC: {self.mac_address}, Score: {self.security_score})"
 
 
-# Przykładowe urządzenia medyczne (dla testów)
+# Sample medical devices (for tests)
 SAMPLE_MEDICAL_DEVICES = [
     {
         "mac_address": "AA:BB:CC:DD:EE:01",
@@ -320,8 +247,8 @@ SAMPLE_MEDICAL_DEVICES = [
         "name": "InsulinPump X1",
         "device_type": DeviceType.INSULIN_PUMP,
         "protocol": Protocol.BLE,
-        "has_encryption": False,  # Podatność!
-        "requires_pairing": False,  # Podatność!
+        "has_encryption": False,
+        "requires_pairing": False,
         "manufacturer": "HealthDev Corp",
         "model": "IP-X1",
         "firmware_version": "1.0.0"

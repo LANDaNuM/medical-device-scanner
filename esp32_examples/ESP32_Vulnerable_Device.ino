@@ -1,23 +1,23 @@
 /*
- * ESP32 Vulnerable Device - Symulacja urządzenia z podatnościami bezpieczeństwa
- * 
- * TEN KOD CELOWO TWORZY PODATNOŚCI BEZPIECZEŃSTWA!
- * Używaj TYLKO do testowania skanera bezpieczeństwa.
- * 
- * Podatności:
- * - Brak szyfrowania BLE
- * - Brak autoryzacji (każdy może się połączyć)
- * - Otwarte dane medyczne
- * - Brak wymagania parowania
- * 
- * Wymagania:
+ * ESP32 Vulnerable Device - Simulates a device with security vulnerabilities
+ *
+ * THIS CODE INTENTIONALLY CREATES SECURITY VULNERABILITIES!
+ * Use ONLY for testing the security scanner.
+ *
+ * Vulnerabilities:
+ * - No BLE encryption
+ * - No authentication (anyone can connect)
+ * - Medical data exposed
+ * - No pairing required
+ *
+ * Requirements:
  * - ESP32 Board (ESP-WROOM-32)
- * - Arduino IDE z ESP32 board support
- * 
- * Instalacja:
- * 1. Wgraj kod na ESP32
- * 2. Uruchom skaner: python src/scanner.py --ble
- * 3. Skaner powinien wykryć podatności!
+ * - Arduino IDE with ESP32 board support
+ *
+ * Setup:
+ * 1. Upload to ESP32
+ * 2. Run scanner: python src/scanner.py --ble
+ * 3. Scanner should detect the vulnerabilities!
  */
 
 #include <BLEDevice.h>
@@ -27,40 +27,37 @@
 BLEServer* pServer = NULL;
 BLECharacteristic* pCharacteristic = NULL;
 
-// UUID dla testowego urządzenia (NIE standardowe UUID medyczne)
+// UUID for test device (NOT standard medical UUID)
 #define SERVICE_UUID        "12345678-1234-1234-1234-123456789abc"
 #define CHARACTERISTIC_UUID  "87654321-4321-4321-4321-cba987654321"
 
-// Callback dla połączenia (bez autoryzacji!)
+// Connection callback (no authentication!)
 class MyServerCallbacks: public BLEServerCallbacks {
     void onConnect(BLEServer* pServer) {
-      Serial.println("⚠️ POŁĄCZENIE BEZ AUTORYZACJI!");
-      Serial.println("   Każdy może się połączyć - TO JEST PODATNOŚĆ!");
+      Serial.println("⚠️ CONNECTION WITHOUT AUTHENTICATION!");
+      Serial.println("   Anyone can connect - THIS IS A VULNERABILITY!");
     }
 
     void onDisconnect(BLEServer* pServer) {
-      Serial.println("Rozłączono");
+      Serial.println("Disconnected");
     }
 };
 
 void setup() {
   Serial.begin(115200);
-  Serial.println("\n=== ⚠️ PODATNE URZĄDZENIE BLE ===");
-  Serial.println("CELOWO TWORZY PODATNOŚCI BEZPIECZEŃSTWA!");
-  Serial.println("Używaj TYLKO do testowania skanera.\n");
+  Serial.println("\n=== ⚠️ VULNERABLE BLE DEVICE ===");
+  Serial.println("INTENTIONALLY CREATES SECURITY VULNERABILITIES!");
+  Serial.println("Use ONLY for testing the scanner.\n");
   
-  // Inicjalizuj BLE BEZ szyfrowania
+  // Init BLE without encryption
   BLEDevice::init("Vulnerable_Medical_Device");
   pServer = BLEDevice::createServer();
   
-  // Ustaw callback (ale nie wymaga autoryzacji)
   pServer->setCallbacks(new MyServerCallbacks());
   
-  // Utwórz service
   BLEService* pService = pServer->createService(SERVICE_UUID);
   
-  // Characteristic BEZ autoryzacji i BEZ szyfrowania
-  // PROPERTY_READ | PROPERTY_WRITE - każdy może odczytać/zapisać
+  // Characteristic without auth and without encryption (anyone can read/write)
   pCharacteristic = pService->createCharacteristic(
     CHARACTERISTIC_UUID,
     BLECharacteristic::PROPERTY_READ |
@@ -68,44 +65,40 @@ void setup() {
     BLECharacteristic::PROPERTY_NOTIFY
   );
   
-  // Ustaw wrażliwe dane medyczne BEZ szyfrowania
+  // Set sensitive medical data without encryption
   String sensitiveData = "Patient_ID:12345,Glucose:95,HeartRate:72";
   pCharacteristic->setValue(sensitiveData.c_str());
   
-  // Rozpocznij service
   pService->start();
   
-  // Rozpocznij advertising (bez wymagania parowania)
   BLEAdvertising* pAdvertising = BLEDevice::getAdvertising();
   pAdvertising->addServiceUUID(SERVICE_UUID);
   pAdvertising->setScanResponse(true);
   pAdvertising->setMinPreferred(0x06);
   BLEDevice::startAdvertising();
   
-  Serial.println("❌ PODATNOŚCI:");
-  Serial.println("   1. Brak szyfrowania BLE");
-  Serial.println("   2. Brak autoryzacji (każdy może się połączyć)");
-  Serial.println("   3. Dane medyczne dostępne bez hasła");
-  Serial.println("   4. Brak wymagania parowania");
-  Serial.println("\n✅ Urządzenie reklamowane i gotowe do skanowania!");
-  Serial.println("   Uruchom skaner: python src/scanner.py --ble");
+  Serial.println("❌ VULNERABILITIES:");
+  Serial.println("   1. No BLE encryption");
+  Serial.println("   2. No authentication (anyone can connect)");
+  Serial.println("   3. Medical data accessible without password");
+  Serial.println("   4. No pairing required");
+  Serial.println("\n✅ Device advertising and ready for scanning!");
+  Serial.println("   Run scanner: python src/scanner.py --ble");
 }
 
 void loop() {
-  // Symuluj wysyłanie danych co 3 sekundy (bez szyfrowania!)
+  // Simulate sending data every 3 seconds (unencrypted!)
   static unsigned long lastSend = 0;
   if (millis() - lastSend > 3000) {
-    // Generuj losowe dane medyczne
     int glucose = random(70, 120);
     int heartRate = random(60, 100);
     
     String data = "Glucose:" + String(glucose) + ",HR:" + String(heartRate);
     
-    // Wyślij BEZ szyfrowania
     pCharacteristic->setValue(data.c_str());
     pCharacteristic->notify();
     
-    Serial.printf("📤 Wysłano dane (BEZ szyfrowania): %s\n", data.c_str());
+    Serial.printf("📤 Sent data (unencrypted): %s\n", data.c_str());
     lastSend = millis();
   }
   

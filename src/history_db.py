@@ -1,12 +1,8 @@
 #!/usr/bin/env python3
 """
-Moduł do przechowywania historii skanowań w bazie danych SQLite.
+SQLite-backed scan history storage.
 
-Umożliwia:
-- Zapis wyników skanowań
-- Pobieranie historii
-- Analizę trendów (zmiany security score w czasie)
-- Wykrywanie nowych urządzeń
+Provides: saving scan results, retrieving history, trend analysis (security score over time), new device detection.
 """
 
 import sqlite3
@@ -21,7 +17,7 @@ from device import Device
 
 @dataclass
 class ScanHistory:
-    """Reprezentuje pojedyncze skanowanie w historii"""
+    """Single scan entry in history."""
     scan_id: int
     timestamp: datetime
     total_devices: int
@@ -33,15 +29,10 @@ class ScanHistory:
 
 
 class HistoryDB:
-    """Zarządza bazą danych historii skanowań"""
+    """Manages scan history database."""
     
     def __init__(self, db_path: Optional[Path] = None):
-        """
-        Inicjalizacja bazy danych.
-        
-        Args:
-            db_path: Ścieżka do pliku bazy danych (domyślnie: project_root/history.db)
-        """
+        """Initialize DB. db_path: path to DB file (default: project_root/history.db)."""
         if db_path is None:
             project_root = Path(__file__).parent.parent
             db_path = project_root / "history.db"
@@ -50,11 +41,9 @@ class HistoryDB:
         self._init_db()
     
     def _init_db(self):
-        """Inicjalizuje schemat bazy danych"""
+        """Initialize database schema."""
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
-        
-        # Tabela skanowań
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS scans (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -68,8 +57,6 @@ class HistoryDB:
                 created_at TEXT DEFAULT CURRENT_TIMESTAMP
             )
         """)
-        
-        # Tabela urządzeń (dla każdego skanowania)
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS scan_devices (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -86,8 +73,6 @@ class HistoryDB:
                 FOREIGN KEY (scan_id) REFERENCES scans(id) ON DELETE CASCADE
             )
         """)
-        
-        # Indeksy dla szybkiego wyszukiwania
         cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_scan_timestamp ON scans(timestamp)
         """)
@@ -102,20 +87,9 @@ class HistoryDB:
         conn.close()
     
     def save_scan(self, devices: List[Device], protocols: List[str]) -> int:
-        """
-        Zapisuje wyniki skanowania do bazy danych.
-        
-        Args:
-            devices: Lista urządzeń
-            protocols: Lista protokołów użytych do skanowania
-        
-        Returns:
-            ID zapisanego skanowania
-        """
+        """Save scan results to DB. Returns saved scan ID."""
         timestamp = datetime.now().isoformat()
         total_devices = len(devices)
-        
-        # Oblicz statystyki
         high_risk = len([d for d in devices if d.security_score < 50])
         medium_risk = len([d for d in devices if 50 <= d.security_score < 80])
         low_risk = len([d for d in devices if d.security_score >= 80])
@@ -123,8 +97,6 @@ class HistoryDB:
         
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
-        
-        # Zapisz skanowanie
         cursor.execute("""
             INSERT INTO scans (timestamp, total_devices, high_risk_count, medium_risk_count, 
                              low_risk_count, avg_security_score, protocols)
@@ -132,8 +104,6 @@ class HistoryDB:
         """, (timestamp, total_devices, high_risk, medium_risk, low_risk, avg_score, json.dumps(protocols)))
         
         scan_id = cursor.lastrowid
-        
-        # Zapisz urządzenia
         for device in devices:
             device_dict = device.to_dict()
             cursor.execute("""
@@ -160,15 +130,7 @@ class HistoryDB:
         return scan_id
     
     def get_recent_scans(self, limit: int = 10) -> List[ScanHistory]:
-        """
-        Pobiera ostatnie skanowania.
-        
-        Args:
-            limit: Maksymalna liczba skanowań
-        
-        Returns:
-            Lista skanowań
-        """
+        """Get most recent scans. limit: max number of scans. Returns list of ScanHistory."""
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
@@ -181,7 +143,6 @@ class HistoryDB:
         
         scans = []
         for row in cursor.fetchall():
-            # Pobierz urządzenia dla tego skanowania
             cursor.execute("""
                 SELECT device_data FROM scan_devices
                 WHERE scan_id = ?
@@ -206,16 +167,7 @@ class HistoryDB:
         return scans
     
     def get_device_history(self, mac_address: str, limit: int = 20) -> List[Dict]:
-        """
-        Pobiera historię konkretnego urządzenia.
-        
-        Args:
-            mac_address: Adres MAC urządzenia
-            limit: Maksymalna liczba wpisów
-        
-        Returns:
-            Lista wpisów historii urządzenia
-        """
+        """Get history for a device by MAC. limit: max entries. Returns list of history entries."""
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
@@ -243,20 +195,10 @@ class HistoryDB:
         return history
     
     def get_trends(self, days: int = 30) -> Dict[str, Any]:
-        """
-        Pobiera trendy bezpieczeństwa z ostatnich dni.
-        
-        Args:
-            days: Liczba dni wstecz
-        
-        Returns:
-            Słownik z trendami (avg_score_over_time, risk_distribution, etc.)
-        """
+        """Get security trends for the last days. Returns dict with timestamps, avg_scores, risk counts, etc."""
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
-        
-        # Oblicz datę początkową
         from datetime import timedelta
         start_date = (datetime.now() - timedelta(days=days)).isoformat()
         
@@ -289,56 +231,29 @@ class HistoryDB:
         return trends
     
     def detect_new_devices(self, current_devices: List[Device]) -> List[Device]:
-        """
-        Wykrywa nowe urządzenia (nie widziane wcześniej).
-        
-        Args:
-            current_devices: Lista obecnie wykrytych urządzeń
-        
-        Returns:
-            Lista nowych urządzeń
-        """
+        """Detect devices not seen before. Returns list of new devices."""
         if not current_devices:
             return []
-        
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
-        
-        # Pobierz wszystkie znane MAC adresy
         cursor.execute("SELECT DISTINCT mac_address FROM scan_devices")
         known_macs = {row[0] for row in cursor.fetchall()}
-        
         conn.close()
-        
-        # Znajdź nowe urządzenia
         new_devices = [d for d in current_devices if d.mac_address not in known_macs]
         
         return new_devices
     
     def get_statistics(self) -> Dict[str, Any]:
-        """
-        Pobiera ogólne statystyki z historii.
-        
-        Returns:
-            Słownik ze statystykami
-        """
+        """Get overall statistics from history. Returns dict with total_scans, unique_devices, last_scan, avg_security_score_30d."""
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
-        
-        # Liczba skanowań
         cursor.execute("SELECT COUNT(*) as count FROM scans")
         total_scans = cursor.fetchone()['count']
-        
-        # Liczba unikalnych urządzeń
         cursor.execute("SELECT COUNT(DISTINCT mac_address) as count FROM scan_devices")
         unique_devices = cursor.fetchone()['count']
-        
-        # Ostatnie skanowanie
         cursor.execute("SELECT MAX(timestamp) as last_scan FROM scans")
         last_scan = cursor.fetchone()['last_scan']
-        
-        # Średni security score (z ostatnich 30 dni)
         from datetime import timedelta
         start_date = (datetime.now() - timedelta(days=30)).isoformat()
         cursor.execute("""

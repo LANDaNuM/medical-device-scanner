@@ -1,26 +1,23 @@
-//! Moduł Rust do szybkiego skanowania portów i przetwarzania danych urządzeń.
+//! Rust module for fast port scanning and device data processing.
 //!
-//! Ten moduł zapewnia wydajne operacje skanowania portów TCP i przetwarzania danych
-//! urządzeń medycznych, które są 3-5x szybsze niż implementacja w Pythonie.
+//! Provides efficient TCP port scanning and medical device data processing (3–5x faster than Python).
 //!
-//! # Główne Komponenty
+//! # Main components
+//! - `FastPortScanner`: Fast TCP port scanning (3–4x faster than Python)
+//! - `DeviceProcessor`: Batch device data processing (5x faster)
 //!
-//! - `FastPortScanner`: Szybkie skanowanie portów TCP (3-4x szybsze niż Python)
-//! - `DeviceProcessor`: Przetwarzanie danych urządzeń w batchach (5x szybsze)
-//!
-//! # Integracja z Pythonem
-//!
-//! Moduł jest kompilowany przez `maturin develop` i dostępny w Pythonie jako:
+//! # Python integration
+//! Build with `maturin develop` and use from Python:
 //! ```python
 //! import rust_scanner
 //! scanner = rust_scanner.FastPortScanner(timeout_ms=1000, max_concurrent=50)
 //! ```
 //!
-//! # Zalety Rust
-//! - Bezpieczeństwo pamięci (brak dangling pointers, buffer overflows)
-//! - Wydajność porównywalna z C/C++
-//! - Przewidywalne zużycie pamięci, brak GC
-//! - Doskonały do systemów wbudowanych i czasu rzeczywistego
+//! # Rust benefits
+//! - Memory safety (no dangling pointers, buffer overflows)
+//! - C/C++-like performance
+//! - Predictable memory usage, no GC
+//! - Suitable for embedded and real-time systems
 
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList};
@@ -28,19 +25,10 @@ use std::net::{IpAddr, SocketAddr};
 use std::time::Duration;
 use tokio::time::timeout;
 
-/// Szybkie skanowanie portów TCP w Rust
-/// 
-/// Zalety Rust:
-/// - Bezpieczeństwo pamięci (brak dangling pointers, buffer overflows)
-/// - Wydajność porównywalna z C/C++
-/// - Przewidywalne zużycie pamięci, brak GC
-/// - Doskonały do systemów wbudowanych i czasu rzeczywistego
-/// Szybki skaner portów TCP używający asynchronicznego I/O (Tokio).
+/// Fast TCP port scanning in Rust using async I/O (Tokio).
+/// Scans TCP ports on a given IP or multiple IPs in parallel with a semaphore to limit concurrency.
 ///
-/// Skanuje porty TCP na danym IP lub wielu IP jednocześnie,
-/// używając równoległości z semaforem do kontroli liczby jednoczesnych połączeń.
-///
-/// # Przykład użycia w Pythonie:
+/// # Python example
 /// ```python
 /// import rust_scanner
 /// scanner = rust_scanner.FastPortScanner(timeout_ms=1000, max_concurrent=50)
@@ -48,35 +36,24 @@ use tokio::time::timeout;
 /// ```
 #[pyclass]
 pub struct FastPortScanner {
-    /// Timeout dla każdego połączenia w milisekundach
+    /// Connection timeout in milliseconds
     timeout_ms: u64,
-    /// Maksymalna liczba jednoczesnych połączeń (1-100)
+    /// Max concurrent connections (1–100)
     max_concurrent: usize,
 }
 
 #[pymethods]
 impl FastPortScanner {
-    /// Tworzy nowy FastPortScanner.
-    ///
-    /// # Parametry:
-    /// - `timeout_ms`: Timeout dla każdego połączenia w milisekundach (np. 1000)
-    /// - `max_concurrent`: Maksymalna liczba jednoczesnych połączeń (1-100, domyślnie ograniczone)
+    /// Create a new FastPortScanner. timeout_ms: connection timeout (e.g. 1000). max_concurrent: 1–100.
     #[new]
     fn new(timeout_ms: u64, max_concurrent: usize) -> Self {
         FastPortScanner {
             timeout_ms,
-            max_concurrent: max_concurrent.max(1).min(100), // Limit 1-100 dla bezpieczeństwa
+            max_concurrent: max_concurrent.max(1).min(100),
         }
     }
 
-    /// Skanuje porty TCP na danym IP
-    /// 
-    /// Args:
-    ///     ip: Adres IP do skanowania (str)
-    ///     ports: Lista portów do skanowania (Vec<u16>)
-    /// 
-    /// Returns:
-    ///     Lista otwartych portów (Vec<u16>)
+    /// Scan TCP ports on the given IP. Returns list of open ports.
     fn scan_ports(&self, ip: &str, ports: Vec<u16>) -> PyResult<Vec<u16>> {
         let ip_addr: IpAddr = ip.parse()
             .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
@@ -86,7 +63,6 @@ impl FastPortScanner {
         let timeout_duration = Duration::from_millis(self.timeout_ms);
         let mut open_ports = Vec::new();
 
-        // Użyj semafora do ograniczenia równoległości
         let semaphore = std::sync::Arc::new(tokio::sync::Semaphore::new(self.max_concurrent));
         let rt = tokio::runtime::Runtime::new()
             .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
@@ -104,7 +80,6 @@ impl FastPortScanner {
                 let task = tokio::spawn(async move {
                     let _permit = semaphore.acquire().await.unwrap();
                     
-                    // Próba połączenia TCP
                     let addr = SocketAddr::new(ip_addr, port);
                     match timeout(timeout_duration, tokio::net::TcpStream::connect(&addr)).await {
                         Ok(Ok(_)) => Some(port),
@@ -115,7 +90,6 @@ impl FastPortScanner {
                 tasks.push(task);
             }
 
-            // Zbierz wyniki
             for task in tasks {
                 if let Ok(Some(port)) = task.await {
                     open_ports.push(port);
@@ -126,14 +100,7 @@ impl FastPortScanner {
         Ok(open_ports)
     }
 
-    /// Skanuje wiele IP jednocześnie
-    /// 
-    /// Args:
-    ///     ips: Lista adresów IP (Vec<String>)
-    ///     ports: Lista portów do skanowania (Vec<u16>)
-    /// 
-    /// Returns:
-    ///     Dict z IP jako kluczami i listą otwartych portów jako wartościami
+    /// Scan multiple IPs in parallel. Returns dict IP -> list of open ports.
     fn scan_multiple_ips(&self, ips: Vec<String>, ports: Vec<u16>) -> PyResult<PyObject> {
         Python::with_gil(|py| {
             let results = PyDict::new(py);
@@ -177,7 +144,6 @@ impl FastPortScanner {
                     tasks.push(task);
                 }
 
-                // Zbierz wyniki
                 for task in tasks {
                     if let Ok((ip, ports)) = task.await {
                         let ports_list = PyList::new(py, ports.iter().copied());
@@ -194,12 +160,9 @@ impl FastPortScanner {
     }
 }
 
-/// Szybkie przetwarzanie danych urządzeń medycznych w batchach.
+/// Fast batch processing of medical device data (5x faster than Python). Also computes security stats.
 ///
-/// Przetwarza urządzenia w partiach dla lepszej wydajności (5x szybsze niż Python).
-/// Oblicza również statystyki bezpieczeństwa dla wszystkich urządzeń.
-///
-/// # Przykład użycia w Pythonie:
+/// # Python example
 /// ```python
 /// import rust_scanner
 /// processor = rust_scanner.DeviceProcessor(batch_size=100)
@@ -208,7 +171,7 @@ impl FastPortScanner {
 /// ```
 #[pyclass]
 pub struct DeviceProcessor {
-    /// Rozmiar batcha do przetwarzania (1-1000)
+    /// Batch size for processing (1–1000)
     #[pyo3(get, set)]
     pub batch_size: usize,
 }
@@ -222,36 +185,23 @@ impl DeviceProcessor {
         }
     }
 
-    /// Przetwarza dane urządzeń w batchach (wydajność Rust)
-    /// 
-    /// Args:
-    ///     devices: Lista urządzeń jako dict
-    /// 
-    /// Returns:
-    ///     Przetworzone dane
+    /// Process device data in batches. Returns processed batches.
     fn process_devices(&self, devices: &PyList) -> PyResult<PyObject> {
         Python::with_gil(|py| {
             let results = PyList::empty(py);
             let device_count = devices.len();
 
-            // Przetwarzaj w batchach dla lepszej wydajności
             for i in (0..device_count).step_by(self.batch_size) {
                 let end = (i + self.batch_size).min(device_count);
                 let batch = PyList::empty(py);
-                
+
                 for j in i..end {
                     if let Ok(device) = devices.get_item(j) {
-                        // Przetwarzaj każde urządzenie
                         if let Ok(device_dict) = device.downcast::<PyDict>() {
-                            // Kopiuj dict z dodatkowymi polami
                             let processed = PyDict::new(py);
-                            
-                            // Skopiuj wszystkie klucze
                             for (key, value) in device_dict.iter() {
                                 processed.set_item(key, value)?;
                             }
-                            
-                            // Dodaj timestamp przetwarzania
                             processed.set_item("processed_at", 
                                 std::time::SystemTime::now()
                                     .duration_since(std::time::UNIX_EPOCH)
@@ -270,7 +220,7 @@ impl DeviceProcessor {
         })
     }
 
-    /// Oblicza statystyki bezpieczeństwa (szybkie w Rust)
+    /// Compute security statistics for the device list.
     fn calculate_security_stats(&self, devices: &PyList) -> PyResult<PyObject> {
         Python::with_gil(|py| {
             let mut total_score = 0.0;
@@ -333,7 +283,7 @@ impl DeviceProcessor {
     }
 }
 
-/// Moduł Python dla Rust Scanner
+/// Python module for Rust Scanner
 #[pymodule]
 fn rust_scanner(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_class::<FastPortScanner>()?;
@@ -342,7 +292,7 @@ fn rust_scanner(_py: Python, m: &PyModule) -> PyResult<()> {
     Ok(())
 }
 
-/// Funkcja pomocnicza do szybkiego skanowania portów
+/// Helper for fast port scanning
 #[pyfunction]
 fn fast_scan_ports(ip: &str, ports: Vec<u16>, timeout_ms: u64) -> PyResult<Vec<u16>> {
     let scanner = FastPortScanner::new(timeout_ms, 50);

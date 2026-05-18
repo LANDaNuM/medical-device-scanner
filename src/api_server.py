@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
 """
-Prosty REST API serwer do dostępu do danych skanera.
+Simple REST API server for scanner data access.
 
-API umożliwia:
-- Pobieranie listy urządzeń (z filtrowaniem)
-- Pobieranie szczegółów urządzenia
-- Pobieranie raportów
-- Statystyki
-- Pobieranie skanów
+API provides:
+- Device list (with filtering)
+- Device details
+- Reports
+- Statistics
+- Scans
 
-UŻYCIE:
-    python src/api_server.py              # Uruchom serwer (domyślnie port 5000)
-    python src/api_server.py --port 8080   # Uruchom na porcie 8080
+USAGE:
+    python src/api_server.py              # Run server (default port 5000)
+    python src/api_server.py --port 8080   # Run on port 8080
 """
 
 import sys
@@ -21,7 +21,7 @@ import json
 from datetime import datetime
 from typing import Optional, List, Dict
 
-# Dodaj ścieżkę do src
+# Add src to path
 script_dir = Path(__file__).parent
 sys.path.insert(0, str(script_dir))
 
@@ -41,16 +41,7 @@ console = Console()
 
 
 def json_response(data: Dict, pretty: bool = False) -> Response:
-    """
-    Zwraca odpowiedź JSON z opcjonalnym formatowaniem.
-    
-    Args:
-        data: Dane do zwrócenia
-        pretty: Czy sformatować JSON (z wcięciami)
-    
-    Returns:
-        Flask Response z JSON
-    """
+    """Return JSON response with optional pretty-printing."""
     if pretty:
         response = Response(
             json.dumps(data, indent=2, ensure_ascii=False),
@@ -60,11 +51,11 @@ def json_response(data: Dict, pretty: bool = False) -> Response:
         response = jsonify(data)
     return response
 
-# Katalogi z danymi - raporty w głównym katalogu projektu
+# Data directories – reports in project root
 project_root = Path(__file__).parent.parent
 scans_dir = project_root / "reports"
 reports_dir = project_root / "reports"
-# Utwórz katalogi jeśli nie istnieją
+# Create directories if they do not exist
 scans_dir.mkdir(exist_ok=True)
 reports_dir.mkdir(exist_ok=True)
 
@@ -72,7 +63,7 @@ app = Flask(__name__) if FLASK_AVAILABLE else None
 
 
 def load_latest_combined_report() -> Optional[Dict]:
-    """Wczytuje najnowszy combined_report (zawiera wszystkie dane)."""
+    """Load latest combined_report (contains all data)."""
     combined_files = sorted(list(reports_dir.glob("combined_report_*.json")))
     if not combined_files:
         return None
@@ -81,11 +72,9 @@ def load_latest_combined_report() -> Optional[Dict]:
     try:
         with open(latest_file, 'r', encoding='utf-8') as f:
             combined_data = json.load(f)
-            # Konwertuj combined_report na format kompatybilny z dashboard
-            # combined_report ma strukturę: {scan: {...}, analysis: {...}, threat_intelligence: {...}}
-            # Dashboard oczekuje: {devices: [...], summary: {...}}
+            # Convert combined_report to dashboard-compatible format
             if 'scan' in combined_data and 'analysis' in combined_data:
-                # Połącz dane z scan i analysis
+                # Merge data from scan and analysis
                 result = {
                     'devices': combined_data.get('scan', {}).get('devices', []),
                     'summary': combined_data.get('analysis', {}).get('summary', {}),
@@ -101,12 +90,12 @@ def load_latest_combined_report() -> Optional[Dict]:
                 return result
             return combined_data
     except Exception as e:
-        console.print(f"[yellow]⚠️  Błąd wczytywania combined_report: {e}[/yellow]")
+        console.print(f"[yellow]⚠️  Error loading combined_report: {e}[/yellow]")
         return None
 
 
 def load_latest_scan() -> Optional[Dict]:
-    """Wczytuje najnowszy skan (stary format - dla kompatybilności wstecznej)."""
+    """Load latest scan (legacy format – backward compatibility)."""
     scan_files = sorted(list(scans_dir.glob("scan_*.json")))
     if not scan_files:
         return None
@@ -120,7 +109,7 @@ def load_latest_scan() -> Optional[Dict]:
 
 
 def load_latest_report() -> Optional[Dict]:
-    """Wczytuje najnowszy raport (stary format - dla kompatybilności wstecznej)."""
+    """Load latest report (legacy format – backward compatibility)."""
     report_files = sorted(list(reports_dir.glob("report_*.json")))
     if not report_files:
         return None
@@ -134,13 +123,13 @@ def load_latest_report() -> Optional[Dict]:
 
 
 def load_latest_data() -> Optional[Dict]:
-    """Wczytuje najnowsze dane - najpierw combined_report, potem stare formaty."""
-    # Najpierw spróbuj combined_report (nowy format)
+    """Load latest data – try combined_report first, then legacy formats."""
+    # Try combined_report first (new format)
     data = load_latest_combined_report()
     if data:
         return data
     
-    # Jeśli nie ma, spróbuj starych formatów
+    # Fall back to legacy formats
     data = load_latest_report()
     if data:
         return data
@@ -153,10 +142,10 @@ def load_latest_data() -> Optional[Dict]:
 
 
 def filter_devices(devices: List[Dict], filters: Dict) -> List[Dict]:
-    """Filtruje urządzenia na podstawie parametrów."""
+    """Filter devices by given parameters."""
     filtered = devices
     
-    # Filtruj po protokole
+    # Filter by protocol
     if 'protocol' in filters:
         protocol_filter = filters['protocol'].upper()
         def protocol_matches(device):
@@ -168,7 +157,7 @@ def filter_devices(devices: List[Dict], filters: Dict) -> List[Dict]:
             return str(device_protocol).upper() == protocol_filter
         filtered = [d for d in filtered if protocol_matches(d)]
     
-    # Filtruj po security score (min)
+    # Filter by security score (min)
     if 'score_min' in filters:
         try:
             score_min = int(filters['score_min'])
@@ -176,7 +165,7 @@ def filter_devices(devices: List[Dict], filters: Dict) -> List[Dict]:
         except ValueError:
             pass
     
-    # Filtruj po security score (max)
+    # Filter by security score (max)
     if 'score_max' in filters:
         try:
             score_max = int(filters['score_max'])
@@ -184,12 +173,12 @@ def filter_devices(devices: List[Dict], filters: Dict) -> List[Dict]:
         except ValueError:
             pass
     
-    # Filtruj po szyfrowaniu
+    # Filter by encryption
     if 'has_encryption' in filters:
         has_enc = filters['has_encryption'].lower() == 'true'
         filtered = [d for d in filtered if d.get('has_encryption', False) == has_enc]
     
-    # Wyszukaj po nazwie/MAC
+    # Search by name/MAC
     if 'search' in filters:
         search_term = filters['search'].lower()
         filtered = [
@@ -201,37 +190,37 @@ def filter_devices(devices: List[Dict], filters: Dict) -> List[Dict]:
 
 
 def render_dashboard_html(devices: List[Dict], summary: Dict, full_data: Dict) -> str:
-    """Renderuje pełny graficzny dashboard z raportem."""
+    """Render full graphical dashboard with report."""
     total = summary.get('total_devices', len(devices))
     high_risk = summary.get('high_risk_count', len([d for d in devices if d.get('security_score', 100) < 50]))
     medium_risk = summary.get('medium_risk_count', len([d for d in devices if 50 <= d.get('security_score', 100) < 80]))
     low_risk = summary.get('low_risk_count', len([d for d in devices if d.get('security_score', 100) >= 80]))
     avg_score = summary.get('average_security_score', sum(d.get('security_score', 0) for d in devices) / total if total > 0 else 0)
     
-    # Statystyki protokołów
+    # Protocol stats
     protocols = {}
     for device in devices:
         proto = device.get('protocol', 'Unknown')
         protocols[proto] = protocols.get(proto, 0) + 1
     
     html = f"""<!DOCTYPE html>
-<html lang="pl">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Pełny Raport - Medical Device Scanner</title>
+    <title>Full Report - Medical Device Scanner</title>
     <script>
-        // Automatyczne zamykanie serwera przy zamknięciu przeglądarki
+        // Auto-close server when browser closes
         let heartbeatInterval;
         
-        // Heartbeat - wysyłaj co sekundę aby pokazać że przeglądarka jest otwarta
+        // Heartbeat - send every second to show browser is open
         function startHeartbeat() {{
             heartbeatInterval = setInterval(function() {{
                 fetch('/heartbeat', {{method: 'GET', keepalive: true}}).catch(() => {{}});
             }}, 1000);
         }}
         
-        // Przy zamknięciu karty wyślij shutdown; serwer odczeka 3 s – jeśli to była nawigacja, nowa strona anuluje
+        // On tab close send shutdown; server waits 3 s – if it was navigation, new page cancels
         function stopAndShutdown() {{
             if (heartbeatInterval) {{ clearInterval(heartbeatInterval); }}
             navigator.sendBeacon('/shutdown');
@@ -241,7 +230,7 @@ def render_dashboard_html(devices: List[Dict], summary: Dict, full_data: Dict) -
         window.addEventListener('unload', stopAndShutdown);
         window.addEventListener('pagehide', stopAndShutdown);
         
-        // Rozpocznij heartbeat po załadowaniu strony
+        // Start heartbeat after page load
         if (document.readyState === 'loading') {{
             document.addEventListener('DOMContentLoaded', startHeartbeat);
         }} else {{
@@ -393,19 +382,19 @@ def render_dashboard_html(devices: List[Dict], summary: Dict, full_data: Dict) -
 <body>
     <div class="header">
         <div class="nav">
-            <a href="/">🏠 Strona główna</a>
-            <a href="/dashboard">📊 Pełny raport</a>
-            <a href="/devices">📱 Urządzenia</a>
+            <a href="/">🏠 Home</a>
+            <a href="/dashboard">📊 Full report</a>
+            <a href="/devices">📱 Devices</a>
             <a href="/stats">📈 Statystyki</a>
         </div>
-        <h1>📊 Pełny Raport Skanowania</h1>
+        <h1>📊 Full Scan Report</h1>
         <p>Data: {summary.get('report_timestamp', 'N/A') if 'report_timestamp' in summary else full_data.get('scan_timestamp', 'N/A')}</p>
     </div>
     
     <div class="stats-grid">
         <div class="stat-card">
             <div class="stat-value" style="color: #667eea;">{total}</div>
-            <div class="stat-label">Wszystkie urządzenia</div>
+            <div class="stat-label">All devices</div>
         </div>
         <div class="stat-card">
             <div class="stat-value stat-high">{high_risk}</div>
@@ -413,7 +402,7 @@ def render_dashboard_html(devices: List[Dict], summary: Dict, full_data: Dict) -
         </div>
         <div class="stat-card">
             <div class="stat-value stat-medium">{medium_risk}</div>
-            <div class="stat-label">Średnie ryzyko</div>
+            <div class="stat-label">Medium risk</div>
         </div>
         <div class="stat-card">
             <div class="stat-value stat-low">{low_risk}</div>
@@ -421,12 +410,12 @@ def render_dashboard_html(devices: List[Dict], summary: Dict, full_data: Dict) -
         </div>
         <div class="stat-card">
             <div class="stat-value" style="color: #667eea;">{avg_score:.1f}</div>
-            <div class="stat-label">Średni security score</div>
+            <div class="stat-label">Average security score</div>
         </div>
     </div>
     
     <div class="section">
-        <h2>📡 Protokoły</h2>
+        <h2>📡 Protocols</h2>
         <div>
 """
     
@@ -438,7 +427,7 @@ def render_dashboard_html(devices: List[Dict], summary: Dict, full_data: Dict) -
     </div>
     
     <div class="section">
-        <h2>📱 Wszystkie Urządzenia</h2>
+        <h2>📱 All Devices</h2>
         <div class="devices-grid">
 """
     
@@ -450,11 +439,11 @@ def render_dashboard_html(devices: List[Dict], summary: Dict, full_data: Dict) -
         vulns = device.get('vulnerabilities', [])
         vulns_html = ""
         if vulns:
-            vulns_html = '<div class="vulns"><strong>⚠️ Podatności (' + str(len(vulns)) + '):</strong>'
+            vulns_html = '<div class="vulns"><strong>⚠️ Vulnerabilities (' + str(len(vulns)) + '):</strong>'
             for vuln in vulns[:5]:
                 vulns_html += f'<div class="vuln-item">• {vuln}</div>'
             if len(vulns) > 5:
-                vulns_html += f'<div class="vuln-item">... i {len(vulns) - 5} więcej</div>'
+                vulns_html += f'<div class="vuln-item">... and {len(vulns) - 5} more</div>'
             vulns_html += '</div>'
         
         # Mikrokontroler
@@ -467,7 +456,7 @@ def render_dashboard_html(devices: List[Dict], summary: Dict, full_data: Dict) -
             microcontroller_info = f"""
             <div class="detail-item">
                 <div class="detail-label">🔧 Mikrokontroler</div>
-                <div class="detail-value">Port: {port} | {baudrate} baud | {len(messages)} komunikatów</div>
+                <div class="detail-value">Port: {port} | {baudrate} baud | {len(messages)} messages</div>
             </div>
             """
         
@@ -499,7 +488,7 @@ def render_dashboard_html(devices: List[Dict], summary: Dict, full_data: Dict) -
                     <div class="detail-value">{device.get('device_type', 'unknown')}</div>
                 </div>
                 <div class="detail-item">
-                    <div class="detail-label">Protokół</div>
+                    <div class="detail-label">Protocol</div>
                     <div class="detail-value">{device.get('protocol', 'N/A')}</div>
                 </div>
                 <div class="detail-item">
@@ -522,7 +511,7 @@ def render_dashboard_html(devices: List[Dict], summary: Dict, full_data: Dict) -
 
 
 def render_stats_html(total: int, by_protocol: Dict, by_encryption: Dict, by_risk: Dict, encryption_strength: Dict) -> str:
-    """Renderuje graficzny interfejs HTML ze statystykami."""
+    """Render HTML UI with statistics."""
     html = f"""<!DOCTYPE html>
 <html lang="pl">
 <head>
@@ -530,17 +519,17 @@ def render_stats_html(total: int, by_protocol: Dict, by_encryption: Dict, by_ris
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Statystyki - Medical Device Scanner</title>
     <script>
-        // Automatyczne zamykanie serwera przy zamknięciu przeglądarki
+        // Auto-close server when browser closes
         let heartbeatInterval;
         
-        // Heartbeat - wysyłaj co sekundę aby pokazać że przeglądarka jest otwarta
+        // Heartbeat - send every second to show browser is open
         function startHeartbeat() {{
             heartbeatInterval = setInterval(function() {{
                 fetch('/heartbeat', {{method: 'GET', keepalive: true}}).catch(() => {{}});
             }}, 1000);
         }}
         
-        // Przy zamknięciu karty wyślij shutdown; serwer odczeka 3 s – jeśli to była nawigacja, nowa strona anuluje
+        // On tab close send shutdown; server waits 3 s – if it was navigation, new page cancels
         function stopAndShutdown() {{
             if (heartbeatInterval) {{ clearInterval(heartbeatInterval); }}
             navigator.sendBeacon('/shutdown');
@@ -550,7 +539,7 @@ def render_stats_html(total: int, by_protocol: Dict, by_encryption: Dict, by_ris
         window.addEventListener('unload', stopAndShutdown);
         window.addEventListener('pagehide', stopAndShutdown);
         
-        // Rozpocznij heartbeat po załadowaniu strony
+        // Start heartbeat after page load
         if (document.readyState === 'loading') {{
             document.addEventListener('DOMContentLoaded', startHeartbeat);
         }} else {{
@@ -621,9 +610,9 @@ def render_stats_html(total: int, by_protocol: Dict, by_encryption: Dict, by_ris
 <body>
     <div class="header">
         <div class="nav">
-            <a href="/">🏠 Strona główna</a>
-            <a href="/dashboard">📊 Pełny raport</a>
-            <a href="/devices">📱 Urządzenia</a>
+            <a href="/">🏠 Home</a>
+            <a href="/dashboard">📊 Full report</a>
+            <a href="/devices">📱 Devices</a>
         </div>
         <h1>📈 Statystyki Skanowania</h1>
     </div>
@@ -633,7 +622,7 @@ def render_stats_html(total: int, by_protocol: Dict, by_encryption: Dict, by_ris
         <div class="stats-grid">
             <div class="stat-item">
                 <div class="stat-value">{total}</div>
-                <div class="stat-label">Wszystkie urządzenia</div>
+                <div class="stat-label">All devices</div>
             </div>
             <div class="stat-item">
                 <div class="stat-value" style="color: #f44336;">{by_risk.get('high_risk', 0)}</div>
@@ -641,7 +630,7 @@ def render_stats_html(total: int, by_protocol: Dict, by_encryption: Dict, by_ris
             </div>
             <div class="stat-item">
                 <div class="stat-value" style="color: #ff9800;">{by_risk.get('medium_risk', 0)}</div>
-                <div class="stat-label">Średnie ryzyko</div>
+                <div class="stat-label">Medium risk</div>
             </div>
             <div class="stat-item">
                 <div class="stat-value" style="color: #4caf50;">{by_risk.get('low_risk', 0)}</div>
@@ -651,7 +640,7 @@ def render_stats_html(total: int, by_protocol: Dict, by_encryption: Dict, by_ris
     </div>
     
     <div class="section">
-        <h2>📡 Protokoły</h2>
+        <h2>📡 Protocols</h2>
         <div class="stats-grid">
 """
     
@@ -686,26 +675,26 @@ def render_stats_html(total: int, by_protocol: Dict, by_encryption: Dict, by_ris
 
 
 def render_devices_html(devices: List[Dict], filters: Dict) -> str:
-    """Renderuje graficzny interfejs HTML z listą urządzeń."""
+    """Render HTML UI with device list."""
     html = """<!DOCTYPE html>
 <html lang="pl">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Urządzenia - Medical Device Scanner</title>
+    <title>Devices - Medical Device Scanner</title>
     {% raw %}
     <script>
-        // Automatyczne zamykanie serwera przy zamknięciu przeglądarki
+        // Auto-close server when browser closes
         let heartbeatInterval;
         
-        // Heartbeat - wysyłaj co sekundę aby pokazać że przeglądarka jest otwarta
+        // Heartbeat - send every second to show browser is open
         function startHeartbeat() {
             heartbeatInterval = setInterval(function() {
                 fetch('/heartbeat', {method: 'GET', keepalive: true}).catch(function() {});
             }, 1000);
         }
         
-        // Przy zamknięciu karty wyślij shutdown; serwer odczeka 3 s – jeśli to nawigacja, nowa strona anuluje
+        // On tab close send shutdown; server waits 3 s – if navigation, new page cancels
         function stopAndShutdown() {
             if (heartbeatInterval) { clearInterval(heartbeatInterval); }
             navigator.sendBeacon('/shutdown');
@@ -715,7 +704,7 @@ def render_devices_html(devices: List[Dict], filters: Dict) -> str:
         window.addEventListener('unload', stopAndShutdown);
         window.addEventListener('pagehide', stopAndShutdown);
         
-        // Rozpocznij heartbeat po załadowaniu strony
+        // Start heartbeat after page load
         if (document.readyState === 'loading') {
             document.addEventListener('DOMContentLoaded', startHeartbeat);
         } else {
@@ -838,18 +827,18 @@ def render_devices_html(devices: List[Dict], filters: Dict) -> str:
 <body>
     <div class="header">
         <div class="nav">
-            <a href="/">🏠 Strona główna</a>
-            <a href="/dashboard">📊 Pełny raport</a>
+            <a href="/">🏠 Home</a>
+            <a href="/dashboard">📊 Full report</a>
             <a href="/stats">📈 Statystyki</a>
         </div>
-        <h1>📱 Wykryte Urządzenia</h1>
-        <p>Znaleziono: """ + str(len(devices)) + """ urządzeń</p>
+        <h1>📱 Detected Devices</h1>
+        <p>Found: """ + str(len(devices)) + """ devices</p>
     </div>
     
     <div class="stats">
         <div class="stat-card">
             <div class="stat-value">""" + str(len(devices)) + """</div>
-            <div class="stat-label">Wszystkie urządzenia</div>
+            <div class="stat-label">All devices</div>
         </div>
         <div class="stat-card">
             <div class="stat-value">""" + str(len([d for d in devices if d.get('security_score', 100) < 50])) + """</div>
@@ -872,11 +861,11 @@ def render_devices_html(devices: List[Dict], filters: Dict) -> str:
         vulns = device.get('vulnerabilities', [])
         vulns_html = ""
         if vulns:
-            vulns_html = '<div class="vulns"><strong>⚠️ Podatności:</strong>'
+            vulns_html = '<div class="vulns"><strong>⚠️ Vulnerabilities:</strong>'
             for vuln in vulns[:5]:
                 vulns_html += f'<div class="vuln-item">• {vuln}</div>'
             if len(vulns) > 5:
-                vulns_html += f'<div class="vuln-item">... i {len(vulns) - 5} więcej</div>'
+                vulns_html += f'<div class="vuln-item">... and {len(vulns) - 5} more</div>'
             vulns_html += '</div>'
         
         # Mikrokontroler info
@@ -889,7 +878,7 @@ def render_devices_html(devices: List[Dict], filters: Dict) -> str:
             microcontroller_info = f"""
             <div class="info-item">
                 <div class="info-label">🔧 Mikrokontroler</div>
-                <div class="info-value">Port: {port} | {baudrate} baud | {len(messages)} komunikatów</div>
+                <div class="info-value">Port: {port} | {baudrate} baud | {len(messages)} messages</div>
             </div>
             """
         
@@ -909,7 +898,7 @@ def render_devices_html(devices: List[Dict], filters: Dict) -> str:
                     <div class="info-value">{device.get('device_type', 'unknown')}</div>
                 </div>
                 <div class="info-item">
-                    <div class="info-label">Protokół</div>
+                    <div class="info-label">Protocol</div>
                     <div class="info-value">{device.get('protocol', 'N/A')}</div>
                 </div>
                 <div class="info-item">
@@ -930,7 +919,7 @@ def render_devices_html(devices: List[Dict], filters: Dict) -> str:
 
 
 def simplify_device(device: Dict, detailed: bool = False) -> Dict:
-    """Upraszcza urządzenie - usuwa niepotrzebne szczegóły."""
+    """Simplify device – remove unnecessary details."""
     simplified = {
         'name': device.get('name', 'Unknown'),
         'mac_address': device.get('mac_address', ''),
@@ -960,15 +949,15 @@ def simplify_device(device: Dict, detailed: bool = False) -> Dict:
     return simplified
 
 
-# Globalna zmienna do kontroli shutdown - eksportowana dla scanner.py
+# Global flag for shutdown control – used by scanner.py
 import threading
 import time
 shutdown_event = threading.Event()
 last_request_time = time.time()  # Czas ostatniego requestu (heartbeat)
-shutdown_timer = None  # Timer: wyłączenie po 3 s od /shutdown, anulowane gdy przyjdzie request (nawigacja)
+shutdown_timer = None  # Timer: shutdown 3 s after /shutdown, cancelled if request arrives (navigation)
 
 if FLASK_AVAILABLE and app:
-    # Zmienna do śledzenia ostatniego requestu (heartbeat)
+    # Track last request time (heartbeat)
     import time
     last_request_time = time.time()
     
@@ -979,7 +968,7 @@ if FLASK_AVAILABLE and app:
     
     @app.route('/shutdown', methods=['POST', 'GET'])
     def shutdown():
-        """Żądanie wyłączenia - odczekaj 3 s; jeśli w tym czasie przyjdzie request (np. nowa strona), anuluj."""
+        """Shutdown request – wait 3 s; if a request arrives (e.g. new page), cancel."""
         global shutdown_timer, last_request_time
         last_request_time = time.time()
         if shutdown_timer:
@@ -991,7 +980,7 @@ if FLASK_AVAILABLE and app:
     
     @app.route('/heartbeat', methods=['GET', 'POST'])
     def heartbeat():
-        """Heartbeat - przeglądarka wysyła to co sekundę aby pokazać że jest otwarta."""
+        """Heartbeat – browser sends every second to show it is open."""
         global last_request_time, shutdown_timer
         last_request_time = time.time()
         if shutdown_timer:
@@ -1001,7 +990,7 @@ if FLASK_AVAILABLE and app:
     
     @app.before_request
     def update_last_request():
-        """Anuluj zaplanowane wyłączenie przy każdym żądaniu (np. nawigacja = nowa strona)."""
+        """Cancel scheduled shutdown on every request (e.g. navigation = new page)."""
         global last_request_time, shutdown_timer
         last_request_time = time.time()
         if shutdown_timer:
@@ -1013,25 +1002,25 @@ if FLASK_AVAILABLE and app:
     
     @app.route('/')
     def index():
-        """Strona główna API - menu nawigacyjne."""
-        # Sprawdź czy klient chce JSON (np. curl, Postman)
+        """API home – navigation menu."""
+        # Check if client wants JSON (e.g. curl, Postman)
         if request.headers.get('Accept', '').startswith('application/json'):
             return jsonify({
                 'name': 'Medical Device Security Scanner API',
                 'version': '1.0',
                 'endpoints': {
-                    '/dashboard': 'Pełny raport (HTML)',
-                    '/devices': 'Lista urządzeń (HTML/JSON)',
+                    '/dashboard': 'Full report (HTML)',
+                    '/devices': 'Device list (HTML/JSON)',
                     '/stats': 'Statystyki (HTML/JSON)'
                 }
             })
         
-        # Sprawdź czy są dane
+        # Check if data exists
         data = load_latest_data()
         has_data = bool(data)
         
-        # Pokaż stronę startową z menu nawigacyjnym
-        # Dla przeglądarki zwróć HTML
+        # Show start page with nav menu
+        # Return HTML for browser
         html_template = """<!DOCTYPE html>
 <html lang="pl">
 <head>
@@ -1040,17 +1029,17 @@ if FLASK_AVAILABLE and app:
     <title>Medical Device Security Scanner API</title>
     {% raw %}
     <script>
-        // Automatyczne zamykanie serwera przy zamknięciu przeglądarki
+        // Auto-close server when browser closes
         let heartbeatInterval;
         
-        // Heartbeat - wysyłaj co sekundę aby pokazać że przeglądarka jest otwarta
+        // Heartbeat - send every second to show browser is open
         function startHeartbeat() {
             heartbeatInterval = setInterval(function() {
                 fetch('/heartbeat', {method: 'GET', keepalive: true}).catch(function() {});
             }, 1000);
         }
         
-        // Przy zamknięciu karty wyślij shutdown; serwer odczeka 3 s – jeśli to nawigacja, nowa strona anuluje
+        // On tab close send shutdown; server waits 3 s – if navigation, new page cancels
         function stopAndShutdown() {
             if (heartbeatInterval) { clearInterval(heartbeatInterval); }
             navigator.sendBeacon('/shutdown');
@@ -1060,7 +1049,7 @@ if FLASK_AVAILABLE and app:
         window.addEventListener('unload', stopAndShutdown);
         window.addEventListener('pagehide', stopAndShutdown);
         
-        // Rozpocznij heartbeat po załadowaniu strony
+        // Start heartbeat after page load
         if (document.readyState === 'loading') {
             document.addEventListener('DOMContentLoaded', startHeartbeat);
         } else {
@@ -1187,20 +1176,20 @@ if FLASK_AVAILABLE and app:
         </div>
         <div class="content">
             <div class="info-box">
-                <h3>ℹ️ O API</h3>
-                <p>To REST API do skanowania i analizy bezpieczeństwa urządzeń medycznych IoT. 
-                Wykrywa urządzenia używające protokołów BLE, WiFi, USB i NFC oraz analizuje ich bezpieczeństwo.</p>
+                <h3>ℹ️ About API</h3>
+                <p>REST API for scanning and security analysis of IoT medical devices. 
+                Detects devices using BLE, WiFi, USB and NFC and analyzes their security.</p>
             </div>
             
-            <h2>📡 Dostępne Endpointy</h2>
+            <h2>📡 Available Endpoints</h2>
             <div class="endpoints">
                 <div class="endpoint">
                     <span class="endpoint-method">📊</span>
                     <span class="endpoint-path">/dashboard</span>
                     <div class="endpoint-desc">
-                        Pełny graficzny raport ze skanowania - wszystkie urządzenia, statystyki, wykresy.
+                        Full graphical scan report – all devices, stats, charts.
                         <br>
-                        <a href="/dashboard" class="test-btn">Otwórz raport →</a>
+                        <a href="/dashboard" class="test-btn">Open report →</a>
                     </div>
                 </div>
                 
@@ -1208,9 +1197,9 @@ if FLASK_AVAILABLE and app:
                     <span class="endpoint-method">📱</span>
                     <span class="endpoint-path">/devices</span>
                     <div class="endpoint-desc">
-                        Lista wszystkich wykrytych urządzeń medycznych z filtrowaniem.
+                        List of all detected medical devices with filtering.
                         <br>
-                        <a href="/devices" class="test-btn">Zobacz urządzenia →</a>
+                        <a href="/devices" class="test-btn">View devices →</a>
                     </div>
                 </div>
                 
@@ -1218,9 +1207,9 @@ if FLASK_AVAILABLE and app:
                     <span class="endpoint-method">📈</span>
                     <span class="endpoint-path">/stats</span>
                     <div class="endpoint-desc">
-                        Statystyki skanowania (liczba urządzeń, protokoły, bezpieczeństwo).
+                        Scan statistics (device count, protocols, security).
                         <br>
-                        <a href="/stats" class="test-btn">Zobacz statystyki →</a>
+                        <a href="/stats" class="test-btn">View stats →</a>
                     </div>
                 </div>
             </div>
@@ -1229,10 +1218,10 @@ if FLASK_AVAILABLE and app:
                 <h2 style="margin-bottom: 20px;">🚀 Szybka Nawigacja</h2>
                 <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
                     <a href="/dashboard" style="display: block; padding: 20px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; text-decoration: none; border-radius: 10px; text-align: center; font-weight: bold; transition: transform 0.2s;">
-                        📊 Pełny Raport
+                        📊 Full Report
                     </a>
                     <a href="/devices" style="display: block; padding: 20px; background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white; text-decoration: none; border-radius: 10px; text-align: center; font-weight: bold; transition: transform 0.2s;">
-                        📱 Urządzenia
+                        📱 Devices
                     </a>
                     <a href="/stats" style="display: block; padding: 20px; background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); color: white; text-decoration: none; border-radius: 10px; text-align: center; font-weight: bold; transition: transform 0.2s;">
                         📈 Statystyki
@@ -1249,27 +1238,27 @@ if FLASK_AVAILABLE and app:
         if has_data:
             status_message = """
             <div style="margin-top: 30px; padding: 20px; background: #e8f5e9; border-left: 4px solid #4caf50; border-radius: 8px;">
-                <h3 style="color: #2e7d32; margin-bottom: 10px;">✅ Dane dostępne</h3>
-                <p style="color: #388e3c;">Znaleziono wyniki skanowania. Kliknij powyżej aby zobaczyć szczegóły.</p>
+                <h3 style="color: #2e7d32; margin-bottom: 10px;">✅ Data available</h3>
+                <p style="color: #388e3c;">Scan results found. Click above to see details.</p>
             </div>
             """
         else:
             status_message = """
             <div style="margin-top: 30px; padding: 20px; background: #fff3e0; border-left: 4px solid #ff9800; border-radius: 8px;">
                 <h3 style="color: #e65100; margin-bottom: 10px;">⚠️ Brak danych</h3>
-                <p style="color: #f57c00;">Nie znaleziono wyników skanowania. Uruchom skanowanie najpierw:</p>
+                <p style="color: #f57c00;">No scan results found. Run a scan first:</p>
                 <code style="display: block; margin-top: 10px; padding: 10px; background: #f5f5f5; border-radius: 4px;">python3 src/scanner.py</code>
             </div>
             """
         
-        # Użyj replace zamiast format aby uniknąć problemów z nawiasami klamrowymi w JavaScript
+        # Use replace instead of format to avoid curly-brace issues in JavaScript
         html_template = html_template.replace('<!-- STATUS_MESSAGE_PLACEHOLDER -->', status_message)
         return render_template_string(html_template)
     
     @app.route('/devices', methods=['GET'])
     def get_devices():
-        """Pobiera listę urządzeń - HTML dla przeglądarki, JSON dla API."""
-        # Sprawdź czy klient chce JSON
+        """Get device list – HTML for browser, JSON for API."""
+        # Check if client wants JSON
         wants_json = request.headers.get('Accept', '').startswith('application/json') or request.args.get('format') == 'json'
         
         # Wczytaj najnowsze dane
@@ -1281,8 +1270,8 @@ if FLASK_AVAILABLE and app:
                 <html><head><title>Brak danych</title></head>
                 <body style="font-family: sans-serif; padding: 40px; text-align: center;">
                     <h1>⚠️ Brak danych</h1>
-                    <p>Nie znaleziono żadnych wyników skanowania.</p>
-                    <p><a href="/">← Powrót</a></p>
+                    <p>No scan results found.</p>
+                    <p><a href="/">← Back</a></p>
                 </body></html>
             """), 404
         
@@ -1292,18 +1281,18 @@ if FLASK_AVAILABLE and app:
         filters = request.args.to_dict()
         filtered_devices = filter_devices(devices, filters)
         
-        # Jeśli JSON - zwróć JSON
+        # If JSON – return JSON
         if wants_json:
             detailed = filters.get('detailed', 'false').lower() == 'true'
             simplified = [simplify_device(d, detailed=detailed) for d in filtered_devices]
             return json_response({'devices': simplified}, pretty=True)
         
-        # HTML - zwróć graficzny interfejs
+        # HTML – return graphical UI
         return render_devices_html(filtered_devices, filters)
     
     @app.route('/devices/<mac>', methods=['GET'])
     def get_device(mac: str):
-        """Pobiera szczegóły urządzenia po MAC address."""
+        """Get device details by MAC address."""
         data = load_latest_data()
         if not data:
             pretty = request.args.get('pretty', 'false').lower() == 'true'
@@ -1321,7 +1310,7 @@ if FLASK_AVAILABLE and app:
     
     @app.route('/report', methods=['GET'])
     def get_report():
-        """Pobiera najnowszy raport - HTML dla przeglądarki."""
+        """Get latest report – HTML for browser."""
         wants_json = request.headers.get('Accept', '').startswith('application/json') or request.args.get('format') == 'json'
         
         report = load_latest_report()
@@ -1332,21 +1321,21 @@ if FLASK_AVAILABLE and app:
                 <html><head><title>Brak raportu</title></head>
                 <body style="font-family: sans-serif; padding: 40px; text-align: center;">
                     <h1>⚠️ Brak raportu</h1>
-                    <p>Nie znaleziono żadnego raportu. Uruchom skanowanie najpierw.</p>
-                    <p><a href="/">← Powrót</a></p>
+                    <p>No report found. Run a scan first.</p>
+                    <p><a href="/">← Back</a></p>
                 </body></html>
             """), 404
         
         if wants_json:
             return json_response(report, pretty=True)
         
-        # HTML - przekieruj do dashboard
+        # HTML – redirect to dashboard
         from flask import redirect
         return redirect('/dashboard')
     
     @app.route('/scan', methods=['GET'])
     def get_scan():
-        """Pobiera najnowszy skan - HTML dla przeglądarki."""
+        """Get latest scan – HTML for browser."""
         wants_json = request.headers.get('Accept', '').startswith('application/json') or request.args.get('format') == 'json'
         
         scan = load_latest_scan()
@@ -1357,30 +1346,30 @@ if FLASK_AVAILABLE and app:
                 <html><head><title>Brak skanu</title></head>
                 <body style="font-family: sans-serif; padding: 40px; text-align: center;">
                     <h1>⚠️ Brak skanu</h1>
-                    <p>Nie znaleziono żadnego skanu. Uruchom skanowanie najpierw.</p>
-                    <p><a href="/">← Powrót</a></p>
+                    <p>No scan found. Run a scan first.</p>
+                    <p><a href="/">← Back</a></p>
                 </body></html>
             """), 404
         
         if wants_json:
             return json_response(scan, pretty=True)
         
-        # HTML - przekieruj do dashboard
+        # HTML – redirect to dashboard
         from flask import redirect
         return redirect('/dashboard')
     
     @app.route('/dashboard', methods=['GET'])
     def dashboard():
-        """Pełny graficzny dashboard z raportem."""
+        """Full graphical dashboard with report."""
         data = load_latest_data()
         if not data:
             return render_template_string("""
                 <html><head><title>Brak danych</title></head>
                 <body style="font-family: sans-serif; padding: 40px; text-align: center;">
-                    <h1>⚠️ Brak danych</h1>
-                    <p>Nie znaleziono żadnych wyników skanowania.</p>
-                    <p>Uruchom: <code>python3 src/scanner.py</code></p>
-                    <p><a href="/">← Powrót</a></p>
+                    <h1>⚠️ No data</h1>
+                    <p>No scan results found.</p>
+                    <p>Run: <code>python3 src/scanner.py</code></p>
+                    <p><a href="/">← Back</a></p>
                 </body></html>
             """), 404
         
@@ -1391,7 +1380,7 @@ if FLASK_AVAILABLE and app:
     
     @app.route('/stats', methods=['GET'])
     def get_stats():
-        """Pobiera statystyki - HTML dla przeglądarki."""
+        """Get statistics – HTML for browser."""
         wants_json = request.headers.get('Accept', '').startswith('application/json') or request.args.get('format') == 'json'
         
         data = load_latest_data()
@@ -1402,7 +1391,7 @@ if FLASK_AVAILABLE and app:
                 <html><head><title>Brak danych</title></head>
                 <body style="font-family: sans-serif; padding: 40px; text-align: center;">
                     <h1>⚠️ Brak danych</h1>
-                    <p><a href="/">← Powrót</a></p>
+                    <p><a href="/">← Back</a></p>
                 </body></html>
             """), 404
         
@@ -1416,7 +1405,7 @@ if FLASK_AVAILABLE and app:
         encryption_strength = {'strong': 0, 'moderate': 0, 'weak': 0, 'none': 0}
         
         for device in devices:
-            # Po protokole (może być obiekt lub string)
+            # By protocol (may be object or string)
             protocol = device.get('protocol', 'unknown')
             if isinstance(protocol, dict):
                 protocol = protocol.get('value', protocol.get('name', 'unknown'))
@@ -1456,18 +1445,18 @@ if FLASK_AVAILABLE and app:
                 'encryption_strength': encryption_strength
             }, pretty=True)
         
-        # HTML - zwróć graficzny interfejs
+        # HTML – return graphical UI
         return render_stats_html(total, by_protocol, by_encryption, by_score, encryption_strength)
 
 
 def main():
-    """Uruchamia serwer API."""
+    """Start the API server."""
     if not FLASK_AVAILABLE:
-        console.print("[red]❌ Flask nie jest zainstalowany![/red]")
-        console.print("[yellow]   Zainstaluj: pip install flask[/yellow]")
+        console.print("[red]❌ Flask is not installed![/red]")
+        console.print("[yellow]   Install: pip install flask[/yellow]")
         sys.exit(1)
     
-    # Parsuj argumenty
+    # Parse arguments
     port = 5000
     if len(sys.argv) > 1:
         if '--port' in sys.argv:
@@ -1476,10 +1465,10 @@ def main():
                 try:
                     port = int(sys.argv[idx + 1])
                 except ValueError:
-                    console.print("[red]❌ Nieprawidłowy port[/red]")
+                    console.print("[red]❌ Invalid port[/red]")
                     sys.exit(1)
         elif sys.argv[1] == '--help' or sys.argv[1] == '-h':
-            console.print("[cyan]Użycie:[/cyan]")
+            console.print("[cyan]Usage:[/cyan]")
             console.print("  python src/api_server.py              # Port 5000")
             console.print("  python src/api_server.py --port 8080   # Port 8080")
             sys.exit(0)

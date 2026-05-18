@@ -5,6 +5,8 @@ __pycache__/
 *.so
 .Python
 venv/
+venv.old/
+venv.old
 env/
 ENV/
 .venv
@@ -33,6 +35,12 @@ data/
 # Reports and exports (generated files)
 reports/
 exports/
+raporty/
+
+# Old/generated JSON (do not publish; patterns match local output filenames)
+threat_intel_*.json
+wyniki*.json
+wyniki_esp32.json
 
 # Logs
 *.log
@@ -44,3 +52,13 @@ Thumbs.db
 # Environment
 .env
 .env.local
+
+# Private docs (not for public repo – only root README.md is shared)
+docs/
+
+# Scripts kept local only (ops/Splunk or reveal author locale; patterns = script basenames)
+scripts/fix_splunk_permissions.sh
+scripts/add_github_remote.sh
+scripts/sync_reports_to_pc.sh
+scripts/import_to_splunk.sh
+scripts/translate_comments_pl_to_en.py

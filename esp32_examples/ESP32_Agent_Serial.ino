@@ -1,12 +1,11 @@
 /*
- * ESP32 Agent Serial - wysyła wyniki skanów BLE do Raspberry Pi przez USB/UART
+ * ESP32 Agent Serial - sends BLE scan results to Raspberry Pi via USB/UART
  *
- * Użycie: podłącz ESP32 do Raspberry Pi kablem USB. Na Pi uruchom:
+ * Usage: connect ESP32 to Raspberry Pi with USB cable. On Pi run:
  *   python scripts/esp32_serial_reader.py
  *
- * ESP32 skanuje BLE co kilka sekund i wysyła każdy wynik jako jedną linię JSON
- * do portu szeregowego. Pi może te dane zapisywać, wyświetlać lub przekazywać
- * do skanera/dashboardu.
+ * ESP32 scans BLE every few seconds and sends each result as one JSON line
+ * on the serial port. Pi can save, display or forward data to scanner/dashboard.
  */
 
 #include <BLEDevice.h>
@@ -39,7 +38,7 @@ void loop() {
     String name = device.getName().length() ? device.getName().c_str() : "(unknown)";
     String addr = device.getAddress().toString().c_str();
 
-    // Jedna linia JSON na urządzenie (łatwe do parsowania na Pi)
+    // One JSON line per device (easy to parse on Pi)
     Serial.print("{\"mac\":\"");
     Serial.print(addr);
     Serial.print("\",\"name\":\"");

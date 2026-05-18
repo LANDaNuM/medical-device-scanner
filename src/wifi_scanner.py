@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 """
-Prawdziwy skaner WiFi - wykrywa urządzenia medyczne w sieci lokalnej.
+Real WiFi scanner – detects medical devices on the local network.
 
-Ten moduł używa nmap i innych narzędzi do skanowania sieci WiFi
-i wykrywania urządzeń medycznych na podstawie otwartych portów,
-usług i charakterystyk sieciowych.
+Uses nmap and other tools to scan WiFi and detect medical devices
+by open ports, services and network characteristics.
 """
 
 import sys
@@ -24,7 +23,7 @@ try:
 except ImportError:
     REQUESTS_AVAILABLE = False
 
-# Dodaj katalog src/ do ścieżki Python
+# Add src/ to Python path
 script_dir = os.path.dirname(os.path.abspath(__file__))
 if script_dir not in sys.path:
     sys.path.insert(0, script_dir)
@@ -40,7 +39,7 @@ try:
     from rust_scanner_wrapper import FastPortScanner, is_rust_available
     RUST_SCANNER_AVAILABLE = is_rust_available()
     if RUST_SCANNER_AVAILABLE:
-        console.print("[dim]✅ Rust scanner dostępny - używam szybkiego skanowania[/dim]")
+        console.print("[dim]✅ Rust scanner available – using fast scan[/dim]")
 except ImportError:
     RUST_SCANNER_AVAILABLE = False
     FastPortScanner = None
@@ -49,169 +48,117 @@ from device import Device, DeviceType, Protocol
 
 console = Console()
 
-# Porty często używane przez urządzenia medyczne
-# 
-# Opis portów i ich przeznaczenie:
-# =================================
-# 
-# PORTY BEZPIECZNE (szyfrowane):
-#   443  - HTTPS: Bezpieczny protokół HTTP z szyfrowaniem TLS/SSL
-#          Używany do interfejsów webowych urządzeń medycznych
-#   8443 - HTTPS Alternative: Alternatywny port dla HTTPS
-#          Często używany przez urządzenia medyczne
-# 
-# PORTY NIEZASZYFROWANE (ryzyko):
-#   80   - HTTP: Niezaszyfrowany protokół webowy
-#          Dane przesyłane w postaci jawnej (ryzyko bezpieczeństwa)
-#   8080 - HTTP Alternative: Alternatywny port HTTP
-#          Często używany do zarządzania urządzeniami
-# 
-# PORTY MEDYCZNE (specjalistyczne protokoły):
-#   5000  - HL7: Protokół wymiany danych medycznych między systemami szpitalnymi
-#           Używany przez systemy EHR (Electronic Health Records) i EMR
-#   104   - DICOM: Standardowy port dla protokołu DICOM
-#           Używany do przesyłania obrazów medycznych (RTG, CT, MRI)
-#   11112 - DICOM Alternative: Alternatywny port dla DICOM
-#           Używany przez niektóre systemy PACS (Picture Archiving and Communication System)
-# 
-# PORTY ADMINISTRACYJNE (wysokie ryzyko jeśli otwarte publicznie):
-#   22   - SSH: Secure Shell, zdalny dostęp do systemu
-#         Ryzyko jeśli nie zabezpieczony silnym hasłem/kluczem
-#   3389 - RDP: Remote Desktop Protocol, zdalny pulpit
-#         Wysokie ryzyko jeśli otwarty publicznie (możliwość przejęcia kontroli)
-# 
-# PORTY BAZ DANYCH (wysokie ryzyko wycieku danych):
-#   1433 - MSSQL: Microsoft SQL Server
-#         Bazy danych medyczne (wysokie ryzyko wycieku danych pacjentów)
-#   3306 - MySQL: Baza danych MySQL
-#         Często używana w systemach medycznych (wysokie ryzyko)
-#
+# Ports commonly used by medical devices (see comments in PORT_VULNERABILITIES for details)
 MEDICAL_PORTS = {
-    443: "HTTPS - Bezpieczny protokół HTTP z szyfrowaniem TLS/SSL, używany do interfejsów webowych urządzeń medycznych",
-    8443: "HTTPS Alternative - Alternatywny port dla HTTPS, często używany przez urządzenia medyczne",
-    80: "HTTP - Niezaszyfrowany protokół webowy, dane przesyłane w postaci jawnej (ryzyko bezpieczeństwa)",
-    8080: "HTTP Alternative - Alternatywny port HTTP, często używany do zarządzania urządzeniami",
-    5000: "HL7 - Protokół wymiany danych medycznych między systemami szpitalnymi (EHR, EMR)",
-    104: "DICOM - Standardowy port dla protokołu DICOM, używany do przesyłania obrazów medycznych (RTG, CT, MRI)",
-    11112: "DICOM Alternative - Alternatywny port dla DICOM, używany przez niektóre systemy PACS",
-    22: "SSH - Secure Shell, zdalny dostęp do systemu (ryzyko jeśli nie zabezpieczony)",
-    3389: "RDP - Remote Desktop Protocol, zdalny pulpit (wysokie ryzyko jeśli otwarty publicznie)",
-    1433: "MSSQL - Microsoft SQL Server, bazy danych medyczne (wysokie ryzyko wycieku danych)",
-    3306: "MySQL - Baza danych MySQL, często używana w systemach medycznych (wysokie ryzyko)",
+    443: "HTTPS - TLS/SSL, web interfaces for medical devices",
+    8443: "HTTPS Alternative - Alternative HTTPS port, often used by medical devices",
+    80: "HTTP - Unencrypted web, data in clear (security risk)",
+    8080: "HTTP Alternative - Alternative HTTP, often used for device management",
+    5000: "HL7 - Medical data exchange between hospital systems (EHR, EMR)",
+    104: "DICOM - Standard DICOM port, medical imaging (X-ray, CT, MRI)",
+    11112: "DICOM Alternative - Alternative DICOM port, some PACS systems",
+    22: "SSH - Secure Shell, remote access (risk if not secured)",
+    3389: "RDP - Remote Desktop (high risk if exposed)",
+    1433: "MSSQL - Microsoft SQL Server, medical DBs (high data leak risk)",
+    3306: "MySQL - MySQL, often in medical systems (high risk)",
 }
 
-# Podatności związane z portami medycznymi i administracyjnymi
-# Każdy port ma przypisane typowe podatności i ryzyka
-#
-# UWAGA: To są TEORETYCZNE podatności na podstawie znanych słabości portów,
-# NIE rzeczywiste testy bezpieczeństwa. Rzeczywiste testy są wykonywane przez
-# VulnerabilityTester (z flagą --audit w scanner.py).
-#
-# Te podatności są używane do szybkiej analizy podczas podstawowego skanowania.
-# Dla dokładniejszej analizy użyj flagi --audit.
+# Vulnerabilities associated with medical and admin ports. These are THEORETICAL (known port weaknesses);
+# real security tests are done by VulnerabilityTester (--audit in scanner.py). Use --audit for deeper analysis.
 PORT_VULNERABILITIES = {
-    # Porty medyczne - podatności specyficzne dla protokołów medycznych
     104: [
-        "DICOM bez szyfrowania - obrazy medyczne mogą być przechwycone",
-        "DICOM bez autoryzacji - nieautoryzowany dostęp do obrazów medycznych",
-        "Stary protokół DICOM - może używać niebezpiecznych wersji protokołu",
-        "Otwarty port DICOM publicznie - dostęp do wrażliwych danych medycznych z Internetu"
+        "DICOM without encryption – medical images can be intercepted",
+        "DICOM without authorization – unauthorized access to medical images",
+        "Legacy DICOM – may use insecure protocol versions",
+        "DICOM port exposed – access to sensitive medical data from internet"
     ],
     11112: [
-        "DICOM Alternative bez szyfrowania - alternatywny port może być mniej zabezpieczony",
-        "DICOM bez autoryzacji - nieautoryzowany dostęp do obrazów medycznych",
-        "Otwarty port DICOM publicznie - dostęp do wrażliwych danych medycznych"
+        "DICOM Alternative without encryption – alternative port may be less secured",
+        "DICOM without authorization – unauthorized access to medical images",
+        "DICOM port exposed – access to sensitive medical data"
     ],
     5000: [
-        "HL7 bez szyfrowania - dane medyczne pacjentów mogą być przechwycone",
-        "HL7 bez autoryzacji - nieautoryzowany dostęp do danych EHR/EMR",
-        "Stary protokół HL7 - może używać niebezpiecznych wersji (HL7v2)",
-        "Otwarty port HL7 publicznie - dostęp do danych pacjentów z Internetu"
+        "HL7 without encryption – patient data can be intercepted",
+        "HL7 without authorization – unauthorized access to EHR/EMR data",
+        "Legacy HL7 – may use insecure versions (HL7v2)",
+        "HL7 port exposed – patient data accessible from internet"
     ],
-    
-    # Porty webowe - podatności związane z interfejsami webowymi
     80: [
-        "HTTP bez szyfrowania - dane przesyłane w postaci jawnej",
-        "HTTP - możliwość przechwycenia danych (sniffing)",
-        "HTTP - ataki man-in-the-middle",
-        "HTTP - hasła i dane medyczne przesyłane niezaszyfrowane"
+        "HTTP without encryption – data in clear",
+        "HTTP – data interception (sniffing)",
+        "HTTP – man-in-the-middle attacks",
+        "HTTP – passwords and medical data sent unencrypted"
     ],
     8080: [
-        "HTTP Alternative bez szyfrowania - dane przesyłane w postaci jawnej",
-        "Port 8080 często używany do zarządzania - ryzyko nieautoryzowanego dostępu",
-        "HTTP Alternative - możliwość przechwycenia danych"
+        "HTTP Alternative without encryption – data in clear",
+        "Port 8080 often used for management – unauthorized access risk",
+        "HTTP Alternative – data interception"
     ],
     443: [
-        "HTTPS z przestarzałymi wersjami TLS (TLS 1.0/1.1) - podatność",
-        "HTTPS z nieprawidłowymi certyfikatami - ryzyko ataków MITM",
-        "HTTPS z słabymi algorytmami szyfrowania - możliwość złamania"
+        "HTTPS with legacy TLS (TLS 1.0/1.1) – vulnerability",
+        "HTTPS with invalid certificates – MITM risk",
+        "HTTPS with weak ciphers – possible compromise"
     ],
     8443: [
-        "HTTPS Alternative z przestarzałymi wersjami TLS - podatność",
-        "HTTPS Alternative z nieprawidłowymi certyfikatami - ryzyko ataków MITM"
+        "HTTPS Alternative with legacy TLS – vulnerability",
+        "HTTPS Alternative with invalid certificates – MITM risk"
     ],
-    
-    # Porty administracyjne - wysokie ryzyko
     22: [
-        "SSH z przestarzałymi wersjami protokołu (SSHv1) - podatność",
-        "SSH z słabymi kluczami - możliwość brute-force",
-        "SSH bez ograniczenia dostępu - ataki brute-force z Internetu",
-        "SSH z domyślnymi hasłami - łatwe do złamania",
-        "SSH - możliwość ataków man-in-the-middle"
+        "SSH with legacy protocol (SSHv1) – vulnerability",
+        "SSH with weak keys – brute-force possible",
+        "SSH without access limits – brute-force from internet",
+        "SSH with default passwords – easy to crack",
+        "SSH – man-in-the-middle possible"
     ],
     3389: [
-        "RDP otwarty publicznie - bardzo wysokie ryzyko przejęcia kontroli",
-        "RDP bez szyfrowania - możliwość przechwycenia sesji",
-        "RDP z słabymi hasłami - łatwe do złamania",
-        "RDP - ataki brute-force i exploity (BlueKeep, CVE-2019-0708)",
-        "RDP - możliwość rozprzestrzeniania ransomware"
+        "RDP exposed – very high risk of takeover",
+        "RDP without encryption – session interception",
+        "RDP with weak passwords – easy to crack",
+        "RDP – brute-force and exploits (BlueKeep, CVE-2019-0708)",
+        "RDP – ransomware spread possible"
     ],
-    
-    # Porty baz danych - bardzo wysokie ryzyko wycieku danych
     1433: [
-        "MSSQL otwarty publicznie - bardzo wysokie ryzyko wycieku danych pacjentów",
-        "MSSQL z domyślnymi hasłami - łatwe do złamania",
-        "MSSQL bez szyfrowania - dane medyczne mogą być przechwycone",
-        "MSSQL - możliwość SQL injection",
-        "MSSQL - dostęp do wrażliwych danych medycznych (PII, PHI)"
+        "MSSQL exposed – very high patient data leak risk",
+        "MSSQL with default passwords – easy to crack",
+        "MSSQL without encryption – medical data can be intercepted",
+        "MSSQL – SQL injection possible",
+        "MSSQL – access to sensitive medical data (PII, PHI)"
     ],
     3306: [
-        "MySQL otwarty publicznie - bardzo wysokie ryzyko wycieku danych pacjentów",
-        "MySQL z domyślnymi hasłami - łatwe do złamania",
-        "MySQL bez szyfrowania - dane medyczne mogą być przechwycone",
-        "MySQL - możliwość SQL injection",
-        "MySQL - dostęp do wrażliwych danych medycznych (PII, PHI)"
+        "MySQL exposed – very high patient data leak risk",
+        "MySQL with default passwords – easy to crack",
+        "MySQL without encryption – medical data can be intercepted",
+        "MySQL – SQL injection possible",
+        "MySQL – access to sensitive medical data (PII, PHI)"
     ],
-    
-    # Inne niebezpieczne porty
     21: [
-        "FTP bez szyfrowania - hasła i dane przesyłane jawnie",
-        "FTP - możliwość przechwycenia danych",
-        "FTP - ataki brute-force"
+        "FTP without encryption – passwords and data in clear",
+        "FTP – data interception",
+        "FTP – brute-force attacks"
     ],
     23: [
-        "Telnet bez szyfrowania - wszystkie dane przesyłane jawnie",
-        "Telnet - bardzo wysokie ryzyko przechwycenia danych",
-        "Telnet - przestarzały i niebezpieczny protokół"
+        "Telnet without encryption – all data in clear",
+        "Telnet – very high data interception risk",
+        "Telnet – legacy and insecure protocol"
     ],
     445: [
-        "SMB otwarty publicznie - ryzyko ransomware (WannaCry)",
-        "SMB z przestarzałymi wersjami (SMBv1) - podatność",
-        "SMB - możliwość rozprzestrzeniania malware"
+        "SMB exposed – ransomware risk (WannaCry)",
+        "SMB with legacy versions (SMBv1) – vulnerability",
+        "SMB – malware spread possible"
     ],
     53: [
-        "DNS otwarty publicznie - możliwość ataków DDoS amplification",
-        "DNS - manipulacja rekordów DNS",
-        "DNS - możliwość wykorzystania do ataków"
+        "DNS exposed – DDoS amplification possible",
+        "DNS – record manipulation",
+        "DNS – can be abused for attacks"
     ],
     25: [
-        "SMTP otwarty publicznie - możliwość spam relay",
-        "SMTP - spoofing maili",
-        "SMTP - możliwość wykorzystania do ataków"
+        "SMTP exposed – spam relay possible",
+        "SMTP – email spoofing",
+        "SMTP – can be abused for attacks"
     ],
 }
 
-# Charakterystyczne nazwy urządzeń medycznych w sieci
+# Typical medical device names on the network
 MEDICAL_DEVICE_KEYWORDS = [
     "medical", "med", "hospital", "clinic", "patient", "monitor",
     "glucose", "gluco", "insulin", "pump", "dicom", "hl7",
@@ -221,15 +168,11 @@ MEDICAL_DEVICE_KEYWORDS = [
 
 class WiFiScanner:
     """
-    Skaner WiFi - wykrywa urządzenia w sieci lokalnej.
-    
-    Używa wielu metod skanowania:
-    1. tshark (Wireshark CLI) - bardzo rozbudowane narzędzie
-    2. scapy - Python library do manipulacji pakietów
-    3. Podstawowe skanowanie (ping + socket) - działa bez uprawnień
-    
-    Wykrywa urządzenia w sieci lokalnej i analizuje ich właściwości
-    bezpieczeństwa na podstawie otwartych portów i usług.
+    WiFi scanner – detects devices on the local network.
+
+    Uses multiple scan methods: tshark (Wireshark CLI), scapy (packet library),
+    and basic ping+socket (no special privileges). Detects devices and analyzes
+    security from open ports and services.
     """
     
     def __init__(self, max_ips_to_scan: int = 50, ping_timeout: float = 0.5, port_timeout: float = 0.2):
@@ -237,17 +180,17 @@ class WiFiScanner:
         Inicjalizacja skanera WiFi.
         
         Args:
-            max_ips_to_scan: Maksymalna liczba IP do skanowania (domyślnie 50 zamiast 254)
-            ping_timeout: Timeout dla ping w sekundach (domyślnie 0.5s)
-            port_timeout: Timeout dla skanowania portów w sekundach (domyślnie 0.2s)
+            max_ips_to_scan: Max IPs to scan (default 50)
+            ping_timeout: Ping timeout in seconds (default 0.5s)
+            port_timeout: Port scan timeout in seconds (default 0.2s)
         """
         self.scanned_devices: List[Device] = []
-        self.mac_vendor_cache: Dict[str, str] = {}  # Cache dla producentów (MAC -> Manufacturer)
+        self.mac_vendor_cache: Dict[str, str] = {}  # MAC -> manufacturer cache
         self.max_ips_to_scan = max_ips_to_scan
         self.ping_timeout = ping_timeout
         self.port_timeout = port_timeout
         
-        # Inicjalizuj Rust scanner jeśli dostępny
+        # Init Rust scanner if available
         if RUST_SCANNER_AVAILABLE and FastPortScanner:
             self.rust_scanner = FastPortScanner(
                 timeout_ms=int(port_timeout * 1000),
@@ -258,57 +201,47 @@ class WiFiScanner:
     
     def scan_wifi_devices(self, network_range: Optional[str] = None) -> List[Device]:
         """
-        Skanuje urządzenia WiFi w sieci lokalnej.
-        
-        Args:
-            network_range: Zakres sieci do skanowania (np. "192.168.1.0/24")
-                          Jeśli None, automatycznie wykrywa sieć lokalną
-        
-        Returns:
-            Lista wykrytych urządzeń Device
+        Scan WiFi devices on local network. network_range: e.g. "192.168.1.0/24"; if None, auto-detect. Returns list of Device.
         """
-        console.print("[cyan]🔍 Rozpoczynam skanowanie WiFi...[/cyan]")
-        console.print("[dim]Skanuję urządzenia w sieci lokalnej (tylko aktywne urządzenia z otwartymi portami)...[/dim]")
-        console.print("[dim]💡 Fizyczne urządzenie: Karta WiFi w laptopie[/dim]")
-        console.print("[dim]💡 Skanuję TYLKO urządzenia w TEJ SAMEJ sieci WiFi (do której jesteś podłączony)[/dim]")
-        console.print("[dim]💡 Wykrywam tylko urządzenia które odpowiadają na ping I mają otwarte porty[/dim]\n")
+        console.print("[cyan]🔍 Starting WiFi scan...[/cyan]")
+        console.print("[dim]Scanning local network (active devices with open ports)...[/dim]")
+        console.print("[dim]💡 Physical device: laptop WiFi adapter[/dim]")
+        console.print("[dim]💡 Scans ONLY devices on the SAME WiFi you are connected to[/dim]")
+        console.print("[dim]💡 Detects only devices that respond to ping and have open ports[/dim]\n")
         
         devices: List[Device] = []
         
-        # Automatycznie wykryj zakres sieci jeśli nie podano
+        # Auto-detect network range if not given
         if network_range is None:
             network_range = self._detect_local_network()
         
         if not network_range:
-            console.print("[red]❌ Nie można wykryć sieci lokalnej[/red]")
-            console.print("[yellow]   Podaj zakres ręcznie: scan_wifi_devices('192.168.1.0/24')[/yellow]\n")
+            console.print("[red]❌ Could not detect local network[/red]")
+            console.print("[yellow]   Provide range manually: scan_wifi_devices('192.168.1.0/24')[/yellow]\n")
             return devices
         
-        console.print(f"[cyan]Skanuję sieć: {network_range}[/cyan]\n")
+        console.print(f"[cyan]Scanning network: {network_range}[/cyan]\n")
         
-        # Priorytet 1: Spróbuj tshark (Wireshark CLI) - bardzo rozbudowane narzędzie
+        # Priority 1: Try tshark (Wireshark CLI)
         devices = self._scan_with_tshark(network_range)
         if devices:
             return devices
         
-        # Priorytet 2: Użyj scapy (lepsze - nie wymaga zewnętrznego programu)
+        # Priority 2: Use scapy (no external program)
         if SCAPY_AVAILABLE:
             try:
                 devices = self._scan_with_scapy(network_range)
-                # Zwróć urządzenia nawet jeśli lista jest pusta - może być błąd, ale spróbuj podstawowego
                 if devices:
                     return devices
-                # Jeśli scapy nie znalazło urządzeń, ale nie było błędu, może być problem z uprawnieniami
-                # Przejdź do podstawowego skanowania
             except Exception as e:
-                console.print(f"[yellow]⚠️  scapy nie działa: {e}[/yellow]")
-                console.print("[dim]   Przechodzę na podstawowe skanowanie...[/dim]\n")
-                pass  # Cicho przejdź do podstawowego skanowania
+                console.print(f"[yellow]⚠️  scapy failed: {e}[/yellow]")
+                console.print("[dim]   Falling back to basic scan...[/dim]\n")
+                pass
         
-        # Priorytet 3: Podstawowe skanowanie używając ping i socket (nie wymaga uprawnień)
+        # Priority 3: Basic ping + socket scan (no privileges)
         devices = self._scan_basic(network_range)
         
-        # Deduplikacja urządzeń - usuń duplikaty na podstawie MAC lub IP
+        # Deduplicate by MAC or IP
         unique_devices = []
         seen_macs = set()
         seen_ips = set()
@@ -317,17 +250,17 @@ class WiFiScanner:
             mac = device.mac_address
             ip = device.metadata.get('ip_address') if device.metadata else None
             
-            # Sprawdź czy to duplikat
+            # Check for duplicate
             is_duplicate = False
             
-            # Jeśli MAC jest wygenerowany (00:00:xx), sprawdź po IP
+            # If MAC is generated (00:00:xx), check by IP
             if mac.startswith("00:00:"):
                 if ip and ip in seen_ips:
                     is_duplicate = True
                 elif ip:
                     seen_ips.add(ip)
             else:
-                # Dla prawdziwych MAC, sprawdź po MAC
+                # For real MACs, check by MAC
                 if mac in seen_macs:
                     is_duplicate = True
                 else:
@@ -338,40 +271,31 @@ class WiFiScanner:
             if not is_duplicate:
                 unique_devices.append(device)
         
-        # Jeśli usunięto duplikaty, wyświetl informację
         if len(devices) > len(unique_devices):
-            console.print(f"[dim]   Usunięto {len(devices) - len(unique_devices)} duplikatów urządzeń[/dim]")
+            console.print(f"[dim]   Removed {len(devices) - len(unique_devices)} duplicate devices[/dim]")
         
         self.scanned_devices = unique_devices
         return unique_devices
     
     def _detect_local_network(self) -> Optional[str]:
-        """
-        Automatycznie wykrywa zakres sieci lokalnej.
-        
-        Returns:
-            Zakres sieci (np. "192.168.1.0/24") lub None
-        """
+        """Auto-detect local network range. Returns e.g. '192.168.1.0/24' or None."""
         try:
-            # Połącz się z zewnętrznym serwerem aby wykryć lokalny IP
+            # Connect to external server to get local IP
             s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             s.connect(("8.8.8.8", 80))
             local_ip = s.getsockname()[0]
             s.close()
             
-            # Wyodrębnij podstawę sieci (np. 192.168.1.0/24)
+            # Get network base (e.g. 192.168.1.0/24)
             ip_parts = local_ip.split('.')
             network_base = '.'.join(ip_parts[:3])
             return f"{network_base}.0/24"
         except Exception as e:
-            console.print(f"[yellow]⚠️  Nie można wykryć sieci lokalnej: {e}[/yellow]")
+            console.print(f"[yellow]⚠️  Could not detect local network: {e}[/yellow]")
             return None
     
     def _get_gateway_ip(self) -> Optional[str]:
-        """
-        Pobiera adres IP bramy domyślnej (routera).
-        Używane do odfiltrowania „duchów” z proxy ARP (router odpowiada za wiele IP).
-        """
+        """Get default gateway IP. Used to filter proxy ARP 'ghosts'."""
         try:
             result = subprocess.run(
                 ['ip', 'route', 'show', 'default'],
@@ -384,10 +308,10 @@ class WiFiScanner:
                 for part in result.stdout.split():
                     if part in ('via', 'dev', 'proto', 'scope', 'link', 'src'):
                         continue
-                    # Pierwszy element wyglądający jak IPv4 to brama
+                    # First IPv4-looking element is gateway
                     if part.count('.') == 3 and part.replace('.', '').isdigit():
                         return part
-            # Fallback: route -n (np. na starszym systemie)
+            # Fallback: route -n (e.g. on older systems)
             result = subprocess.run(
                 ['route', '-n'],
                 capture_output=True,
@@ -410,12 +334,7 @@ class WiFiScanner:
         gateway_ip: Optional[str] = None,
         gateway_mac: Optional[str] = None
     ) -> List[Dict]:
-        """
-        Usuwa duplikaty i „duchy” z listy hostów:
-        - Jeden wpis na adres MAC (jedno urządzenie = jeden wpis)
-        - Odrzuca hosty, gdzie MAC = brama i IP != brama (proxy ARP – router „udaje” wiele IP)
-        - Pomija adresy .0 i .255 (sieć/rozgłoszenie)
-        """
+        """Remove duplicates and proxy ARP 'ghosts'; one entry per MAC; skip .0 and .255."""
         if not active_hosts:
             return []
         seen_mac: Dict[str, Dict] = {}
@@ -427,38 +346,23 @@ class WiFiScanner:
             mac = (h.get("mac") or "").strip().upper().replace("-", ":")
             if not ip or not mac:
                 continue
-            # Pomiń adres sieci i rozgłoszenia
+            # Skip network and broadcast addresses
             if ip.endswith(".0") or ip.endswith(".255"):
                 continue
-            # Proxy ARP: ten sam MAC co brama, ale inny IP → prawdopodobnie „duch”
+            # Proxy ARP: same MAC as gateway but different IP → likely ghost
             if gateway_mac_norm and mac == gateway_mac_norm and ip != gateway_ip_str:
                 continue
-            # Jeden wpis na MAC (pierwszy napotkany IP dla tego MAC)
+            # One entry per MAC (first IP seen for this MAC)
             if mac not in seen_mac:
                 seen_mac[mac] = h
                 out.append(h)
         return out
     
     def _scan_with_scapy(self, network_range: str) -> List[Device]:
-        """
-        Skanuje sieć używając scapy (lepsze niż nmap - nie wymaga zewnętrznego programu).
-        
-        Scapy może:
-        - Wykrywać aktywne hosty (ARP scan)
-        - Skanować porty (TCP SYN scan)
-        - Pobierać MAC adresy bezpośrednio
-        - Wykrywać usługi
-        
-        Args:
-            network_range: Zakres sieci do skanowania (np. "192.168.1.0/24")
-        
-        Returns:
-            Lista wykrytych urządzeń
-        """
+        """Scan network with scapy (no external program). Returns list of devices."""
         devices: List[Device] = []
         
         try:
-            # Wyłącz verbose mode w scapy (mniej outputu)
             conf.verb = 0
             
             with Progress(
@@ -466,25 +370,25 @@ class WiFiScanner:
                 TextColumn("[progress.description]{task.description}"),
                 console=console
             ) as progress:
-                task = progress.add_task("Skanuję sieć scapy...", total=None)
+                task = progress.add_task("Scanning network with scapy...", total=None)
                 
-                # Krok 1: Spróbuj ARP scan (wymaga root) lub użyj ping scan (działa bez root)
-                progress.update(task, description="Wykrywam aktywne hosty...")
-                console.print("[cyan]  Wykrywam aktywne hosty...[/cyan]")
+                # Step 1: ARP scan (needs root) or ping scan (no root)
+                progress.update(task, description="Detecting active hosts...")
+                console.print("[cyan]  Detecting active hosts...[/cyan]")
                 
                 active_hosts = []
                 
-                # Spróbuj ARP scan (wymaga root)
+                # Try ARP scan (needs root)
                 try:
-                    # Utwórz pakiet ARP dla całej sieci
+                    # Create ARP packet for whole network
                     arp_request = ARP(pdst=network_range)
                     broadcast = Ether(dst="ff:ff:ff:ff:ff:ff")
                     arp_request_broadcast = broadcast / arp_request
                     
-                    # Wyślij pakiety i odbierz odpowiedzi
+                    # Send and receive
                     answered_list = srp(arp_request_broadcast, timeout=2, verbose=False)[0]
                     
-                    # Pobierz listę aktywnych hostów z MAC adresami
+                    # Get active hosts with MACs
                     for element in answered_list:
                         host_info = {
                             'ip': element[1].psrc,  # IP address
@@ -493,17 +397,16 @@ class WiFiScanner:
                         active_hosts.append(host_info)
                     
                 except PermissionError:
-                    # Brak uprawnień - użyj ping scan (działa bez root)
+                    # No privileges – use ping scan
                     network_base = network_range.split('/')[0].rsplit('.', 1)[0]
                     
-                    # Ping scan - skanuj tylko pierwsze N adresów (szybsze!)
-                    # Priorytet: .1 (router), .2-.20 (częste urządzenia), reszta
+                    # Ping scan – first N addresses (faster). Priority: .1 (router), .2-.20, rest
                     priority_ips = [1, 254]  # Routery
-                    common_ips = list(range(2, min(21, self.max_ips_to_scan + 1)))  # Częste urządzenia
+                    common_ips = list(range(2, min(21, self.max_ips_to_scan + 1)))  # Common devices
                     other_ips = list(range(21, min(255, self.max_ips_to_scan + 1)))  # Reszta
                     ips_to_scan = priority_ips + common_ips + other_ips
                     
-                    # Równoległe ping scan
+                    # Parallel ping scan
                     from concurrent.futures import ThreadPoolExecutor, as_completed
                     ping_results = {}
                     
@@ -518,7 +421,7 @@ class WiFiScanner:
                         except Exception:
                             return (ip, False)
                     
-                    # Ping równolegle (max 20 jednocześnie)
+                    # Ping in parallel (max 20 at a time)
                     with ThreadPoolExecutor(max_workers=20) as executor:
                         futures = {executor.submit(ping_host, f"{network_base}.{i}"): i for i in ips_to_scan}
                         for future in as_completed(futures):
@@ -526,8 +429,7 @@ class WiFiScanner:
                             if is_alive:
                                 ping_results[ip] = True
                     
-                    # Dla aktywnych hostów - dodaj WSZYSTKIE które odpowiadają na ping
-                    # Nie wymagaj otwartych portów - telefony/telewizory często nie mają otwartych portów
+                    # Add all hosts that respond to ping (phones/TVs often have no open ports)
                     for ip in ping_results.keys():
                         try:
                             mac = self._get_mac_address(ip)
@@ -540,7 +442,7 @@ class WiFiScanner:
                             continue
                     
                 except Exception:
-                    # Inny błąd - użyj ping scan jako fallback
+                    # Other error – use ping as fallback
                     network_base = network_range.split('/')[0].rsplit('.', 1)[0]
                     
                     for i in range(1, 255):
@@ -552,7 +454,7 @@ class WiFiScanner:
                                 timeout=1
                             )
                             if result.returncode == 0:
-                                # Weryfikuj czy urządzenie jest rzeczywiście aktywne
+                                # Verify device is actually active
                                 test_ports = [80, 443, 22, 23, 135, 139, 445, 161, 3389]
                                 is_active = False
                                 
@@ -565,7 +467,7 @@ class WiFiScanner:
                                         is_active = True
                                         break
                                 
-                                # Routery często odpowiadają na ping ale blokują porty
+                                # Routers often respond to ping but block ports
                                 if not is_active and (ip.endswith('.1') or ip.endswith('.254')):
                                     is_active = True
                                 
@@ -579,28 +481,28 @@ class WiFiScanner:
                         except Exception:
                             continue
                 
-                # Jedno urządzenie = jeden MAC; usuń „duchy” (proxy ARP) i duplikaty
+                # One device = one MAC; remove proxy ARP ghosts and duplicates
                 gateway_ip = self._get_gateway_ip()
                 gateway_mac = self._get_mac_address(gateway_ip) if gateway_ip else None
                 active_hosts = self._deduplicate_active_hosts(active_hosts, gateway_ip, gateway_mac)
                 
-                console.print(f"[cyan]  Znaleziono {len(active_hosts)} aktywnych hostów[/cyan]")
+                console.print(f"[cyan]  Found {len(active_hosts)} active hosts[/cyan]")
                 
                 if not active_hosts:
-                    progress.update(task, description="✅ Brak aktywnych hostów")
+                    progress.update(task, description="✅ No active hosts")
                     return devices
                 
-                # Krok 2: Dla każdego hosta przeskanuj porty (użyj Rust jeśli dostępny!)
+                # Step 2: Scan ports for each host (use Rust if available)
                 # Porty do skanowania: medyczne, administracyjne, webowe, bazy danych
                 ports_to_scan = [21, 22, 23, 25, 53, 80, 110, 135, 139, 143, 161, 162, 443, 445, 
                                 993, 995, 104, 5000, 11112, 1433, 3306, 3389, 5432, 5900, 5901, 
                                 8080, 8443, 27017]
                 
-                progress.update(task, description=f"Skanuję porty {len(active_hosts)} hostów...")
+                progress.update(task, description=f"Scanning ports on {len(active_hosts)} hosts...")
                 
-                # Użyj Rust scanner dla wszystkich hostów jednocześnie (jeśli dostępny)
+                # Use Rust scanner for all hosts at once if available
                 if self.rust_scanner and len(active_hosts) > 1:
-                    # Szybkie równoległe skanowanie wszystkich IP jednocześnie
+                    # Fast parallel scan of all IPs
                     ips = [h['ip'] for h in active_hosts]
                     all_results = self.rust_scanner.scan_multiple_ips(ips, ports_to_scan)
                     
@@ -612,96 +514,79 @@ class WiFiScanner:
                             
                             open_ports = all_results.get(ip, [])
                             
-                            # Analizuj urządzenie - wykrywaj WSZYSTKIE urządzenia (nawet bez otwartych portów)
+                            # Analyze device – detect all devices (even without open ports)
                             hostname = self._get_hostname(ip, open_ports if open_ports else [])
                             device = self._analyze_host_scapy(ip, mac, hostname, open_ports)
                             if device:
                                 devices.append(device)
                                 if open_ports:
-                                    progress.update(task, description=f"✓ {hostname} ({len(open_ports)} portów)")
+                                    progress.update(task, description=f"✓ {hostname} ({len(open_ports)} ports)")
                                 else:
-                                    progress.update(task, description=f"✓ {hostname} (aktywne, brak otwartych portów)")
+                                    progress.update(task, description=f"✓ {hostname} (active, no open ports)")
                         except Exception as e:
-                            console.print(f"[yellow]  ⚠ Błąd skanowania {host_info.get('ip', 'unknown')}: {e}[/yellow]")
+                            console.print(f"[yellow]  ⚠ Scan error {host_info.get('ip', 'unknown')}: {e}[/yellow]")
                             continue
                 else:
-                    # Fallback: sekwencyjne skanowanie (wolniejsze)
+                    # Fallback: sequential scan (slower)
                     for i, host_info in enumerate(active_hosts):
                         try:
                             ip = host_info['ip']
                             mac = host_info['mac']
-                            progress.update(task, description=f"Skanuję {ip} ({i+1}/{len(active_hosts)})...")
+                            progress.update(task, description=f"Scanning {ip} ({i+1}/{len(active_hosts)})...")
                             
-                            # Skanuj porty dla tego hosta
                             open_ports = []
                             if self.rust_scanner:
-                                # Użyj Rust scanner dla pojedynczego IP
                                 open_ports = self.rust_scanner.scan_ports(ip, ports_to_scan)
                             else:
-                                # Fallback: scapy TCP SYN scan
                                 for port in ports_to_scan:
                                     try:
                                         response = sr1(IP(dst=ip) / TCP(dport=port, flags="S"), timeout=self.port_timeout, verbose=False)
                                         if response and response.haslayer(TCP):
-                                            if response[TCP].flags == 18:  # SYN-ACK (port otwarty)
+                                            if response[TCP].flags == 18:  # SYN-ACK (port open)
                                                 open_ports.append(port)
                                     except Exception:
                                         continue
                             
-                            # Analizuj urządzenie - wykrywaj WSZYSTKIE urządzenia (nawet bez otwartych portów)
-                            # Telefony, telewizory itp. często nie mają otwartych portów, ale są aktywne
+                            # Analyze device – detect all devices (even without open ports)
+                            # Phones, TVs often have no open ports but are active
                             hostname = self._get_hostname(ip, open_ports if open_ports else [])
                             device = self._analyze_host_scapy(ip, mac, hostname, open_ports)
                             if device:
                                 devices.append(device)
                                 if open_ports:
-                                    progress.update(task, description=f"✓ {hostname} ({len(open_ports)} portów)")
+                                    progress.update(task, description=f"✓ {hostname} ({len(open_ports)} ports)")
                                 else:
-                                    progress.update(task, description=f"✓ {hostname} (aktywne, brak otwartych portów)")
+                                    progress.update(task, description=f"✓ {hostname} (active, no open ports)")
                         
                         except Exception as e:
-                            console.print(f"[yellow]  ⚠ Błąd skanowania {host_info.get('ip', 'unknown')}: {e}[/yellow]")
+                            console.print(f"[yellow]  ⚠ Scan error {host_info.get('ip', 'unknown')}: {e}[/yellow]")
                             continue
                 
-                progress.update(task, description=f"✅ Skanowanie zakończone")
+                progress.update(task, description="✅ Scan complete")
             
-            console.print(f"\n[green]✅ Skanowanie zakończone. Znaleziono {len(devices)} urządzeń.[/green]\n")
+            console.print(f"\n[green]✅ Scan complete. Found {len(devices)} devices.[/green]\n")
             return devices
             
         except Exception as e:
-            console.print(f"[yellow]⚠️  scapy nie działa: {e}[/yellow]")
-            console.print("[dim]   Przechodzę na podstawowe skanowanie...[/dim]\n")
-            # Nie rzucaj wyjątku - pozwól przejść do podstawowego skanowania
+            console.print(f"[yellow]⚠️  scapy failed: {e}[/yellow]")
+            console.print("[dim]   Falling back to basic scan...[/dim]\n")
             return []
     
     def _analyze_host_scapy(self, ip: str, mac: str, hostname: str, open_ports: List[int]) -> Optional[Device]:
-        """
-        Analizuje host wykryty przez scapy.
-        
-        Args:
-            ip: Adres IP hosta
-            mac: Adres MAC hosta
-            hostname: Nazwa hosta
-            open_ports: Lista otwartych portów
-        
-        Returns:
-            Obiekt Device lub None
-        """
+        """Analyze host detected by scapy. Returns Device or None."""
         try:
-            # Pobierz producenta z API
             manufacturer = self._get_manufacturer_from_mac_api(mac)
             
-            # Określ typ urządzenia
+            # Determine device type
             device_type = self._detect_device_type(hostname, open_ports)
             
-            # Sprawdź bezpieczeństwo na podstawie portów
-            # WiFi ma szyfrowanie na poziomie sieci (WPA2/WPA3), ale sprawdzamy też porty aplikacyjne
-            # Porty szyfrowane: 443 (HTTPS), 8443 (HTTPS Alt), 993 (IMAPS), 995 (POP3S), 22 (SSH)
+            # Security from ports; WiFi has network-level encryption (WPA2/WPA3), we also check app ports
+            # Encrypted ports: 443, 8443, 993, 995, 22
             encrypted_ports = [443, 8443, 993, 995, 22]
             has_encryption = any(port in open_ports for port in encrypted_ports)
-            requires_pairing = True  # WiFi zazwyczaj wymaga hasła (WPA2/WPA3)
+            requires_pairing = True  # WiFi typically requires password (WPA2/WPA3)
             
-            # Określ typ szyfrowania
+            # Determine encryption type
             encryption_type = None
             if has_encryption:
                 if 443 in open_ports or 8443 in open_ports:
@@ -713,8 +598,7 @@ class WiFiScanner:
                 else:
                     encryption_type = "Encrypted (TLS/SSL)"
             else:
-                # WiFi ma szyfrowanie na poziomie sieci (WPA2/WPA3), więc nawet bez portów aplikacyjnych
-                # urządzenie jest chronione na poziomie sieci
+                # WiFi has network-level encryption, so device is protected even without app ports
                 if 80 in open_ports:
                     encryption_type = "Network-level encryption (WPA2/WPA3), HTTP unencrypted"
                 else:
@@ -722,11 +606,11 @@ class WiFiScanner:
                 # Ustaw has_encryption na True, bo WiFi ma szyfrowanie sieciowe
                 has_encryption = True
             
-            # Sprawdź czy to router
+            # Check if router
             is_router = self._is_router_device(hostname, open_ports, ip)
             is_medical = self._is_medical_device(hostname, open_ports)
             
-            # Utwórz urządzenie
+            # Create device
             device = Device(
                 mac_address=mac,
                 name=hostname,
@@ -743,17 +627,17 @@ class WiFiScanner:
                 }
             )
             
-            # Dodaj podatności tylko jeśli są rzeczywiste
+            # Add vulnerabilities only if real
             if not has_encryption and open_ports:
                 if is_router:
                     if 443 in open_ports or 8443 in open_ports:
                         pass  # Ma HTTPS - OK
                     else:
-                        device.add_vulnerability("HTTP bez HTTPS - zalecane użycie HTTPS dla routera")
+                        device.add_vulnerability("HTTP without HTTPS – recommend HTTPS for router")
                 else:
-                    device.add_vulnerability("Brak szyfrowania - dane mogą być przechwycone")
+                    device.add_vulnerability("No encryption – data can be intercepted")
             
-            # Testuj podatności dla wszystkich otwartych portów (z kontekstem)
+            # Test vulnerabilities for all open ports (with context)
             port_vulnerabilities = self._test_port_vulnerabilities(open_ports, is_router=is_router, is_medical=is_medical)
             for vuln in port_vulnerabilities:
                 device.add_vulnerability(vuln)
@@ -762,32 +646,23 @@ class WiFiScanner:
             return device
         
         except Exception as e:
-            console.print(f"[yellow]  ⚠ Błąd analizy {ip}: {e}[/yellow]")
+            console.print(f"[yellow]  ⚠ Analysis error {ip}: {e}[/yellow]")
             return None
     
     def _scan_basic(self, network_range: str) -> List[Device]:
-        """
-        Podstawowe skanowanie używając ping i socket (bez nmap).
-        
-        Args:
-            network_range: Zakres sieci do skanowania
-        
-        Returns:
-            Lista wykrytych urządzeń
-        """
+        """Basic scan with ping and socket (no nmap). Returns list of devices."""
         devices: List[Device] = []
         
-        # Wyodrębnij podstawę IP (np. 192.168.1)
+        # Extract IP base (e.g. 192.168.1)
         network_base = network_range.split('/')[0].rsplit('.', 1)[0]
         
-        console.print(f"[yellow]⚠️  Używam podstawowego skanowania (ping + socket)[/yellow]")
-        console.print(f"[dim]   Uwaga: Podstawowe skanowanie może być wolniejsze i mniej dokładne[/dim]\n")
+        console.print(f"[yellow]⚠️  Using basic scan (ping + socket)[/yellow]")
+        console.print(f"[dim]   Note: Basic scan may be slower and less accurate[/dim]\n")
         
-        # Skanuj więcej adresów IP aby wykryć wszystkie urządzenia
-        max_ips = min(self.max_ips_to_scan, 254)  # Skanuj całą sieć (1-254) dla lepszego wykrywania
-        console.print(f"[dim]   Skanuję {max_ips} adresów IP...[/dim]")
+        max_ips = min(self.max_ips_to_scan, 254)
+        console.print(f"[dim]   Scanning {max_ips} IP addresses...[/dim]")
         
-        # Równoległe ping scan dla szybkości
+        # Parallel ping for speed
         from concurrent.futures import ThreadPoolExecutor, as_completed
         ping_results = {}
         
@@ -802,7 +677,7 @@ class WiFiScanner:
             except Exception:
                 return (ip, False)
         
-        # Ping równolegle (max 50 jednocześnie)
+        # Ping in parallel (max 50 at a time)
         with ThreadPoolExecutor(max_workers=50) as executor:
             futures = {executor.submit(ping_host, f"{network_base}.{i}"): i for i in range(1, max_ips + 1)}
             for future in as_completed(futures):
@@ -810,7 +685,7 @@ class WiFiScanner:
                 if is_alive:
                     ping_results[ip] = True
         
-        # Pobierz MAC dla każdego IP (potrzebne do deduplikacji po MAC i odfiltrowania „duchów”)
+        # Get MAC for each IP (for dedup and proxy ARP filter)
         active_hosts_raw = []
         for ip in ping_results.keys():
             try:
@@ -819,12 +694,12 @@ class WiFiScanner:
             except Exception:
                 continue
         
-        # Jedno urządzenie = jeden MAC; usuń „duchy” (proxy ARP) i duplikaty
+        # One device = one MAC; remove proxy ARP ghosts and duplicates
         gateway_ip = self._get_gateway_ip()
         gateway_mac = self._get_mac_address(gateway_ip) if gateway_ip else None
         active_hosts = self._deduplicate_active_hosts(active_hosts_raw, gateway_ip, gateway_mac)
         
-        console.print(f"[dim]   Po deduplikacji (1 urządzenie = 1 MAC): {len(active_hosts)} hostów[/dim]\n")
+        console.print(f"[dim]   After dedup (1 device = 1 MAC): {len(active_hosts)} hosts[/dim]\n")
         
         # Teraz przeanalizuj tylko zdeduplikowane hosty
         for host in active_hosts:
@@ -832,21 +707,19 @@ class WiFiScanner:
             if not ip:
                 continue
             try:
-                    # Host odpowiada na ping - to jest aktywne urządzenie!
-                    # Sprawdź otwarte porty (ale nie wymagaj ich - telefony/telewizory często nie mają otwartych portów)
+                    # Host responds to ping – active device. Check open ports (phones/TVs often have none)
                     test_ports = [80, 443, 22, 23, 135, 139, 445, 161, 3389, 8080, 8443, 554, 8554, 5000, 7001, 7002]
                     open_ports = []
                     
                     for port in test_ports:
                         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                        sock.settimeout(0.2)  # Krótszy timeout dla szybkości
+                        sock.settimeout(0.2)  # Shorter timeout for speed
                         result_port = sock.connect_ex((ip, port))
                         sock.close()
                         if result_port == 0:
                             open_ports.append(port)
                     
-                    # Wykryj WSZYSTKIE urządzenia które odpowiadają na ping (nawet bez otwartych portów)
-                    # Telefony, telewizory, tablety itp. często nie mają otwartych portów, ale są aktywne
+                    # Detect all devices that respond to ping (even without open ports)
                     device = self._analyze_host_basic(ip)
                     if device:
                         # Zaktualizuj otwarte porty w metadanych
@@ -854,14 +727,14 @@ class WiFiScanner:
                             device.metadata['open_ports'] = open_ports
                         devices.append(device)
                         if open_ports:
-                            console.print(f"  [green]✓[/green] Wykryto: {device.name} ({ip}) - {len(open_ports)} otwartych portów")
+                            console.print(f"  [green]✓[/green] Detected: {device.name} ({ip}) - {len(open_ports)} open ports")
                         else:
-                            console.print(f"  [green]✓[/green] Wykryto: {device.name} ({ip}) - aktywne (brak otwartych portów)")
+                            console.print(f"  [green]✓[/green] Detected: {device.name} ({ip}) - active (no open ports)")
             
             except Exception:
                 continue
         
-        console.print(f"\n[green]✅ Skanowanie zakończone. Znaleziono {len(devices)} urządzeń.[/green]\n")
+        console.print(f"\n[green]✅ Scan complete. Found {len(devices)} devices.[/green]\n")
         return devices
     
     def _analyze_host_basic(self, ip: str) -> Optional[Device]:
@@ -875,31 +748,30 @@ class WiFiScanner:
             Obiekt Device lub None
         """
         try:
-            # Spróbuj połączyć się z popularnymi portami (ale nie wymagaj ich!)
-            # Telefony, telewizory itp. często nie mają otwartych portów, ale są aktywne
+            # Try connecting to common ports (but do not require them)
             test_ports = [80, 443, 8080, 22, 3389, 554, 8554, 5000, 7001, 7002, 8443]
             open_ports = []
             
             for port in test_ports:
                 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                sock.settimeout(0.2)  # Krótszy timeout dla szybkości
+                sock.settimeout(0.2)  # Short timeout for speed
                 result = sock.connect_ex((ip, port))
                 sock.close()
                 
                 if result == 0:
                     open_ports.append(port)
             
-            # Zwróć urządzenie nawet bez otwartych portów - urządzenie odpowiada na ping, więc jest aktywne
+            # Return device even without open ports – it responds to ping
             
-            # Spróbuj pobrać rzeczywistą nazwę hosta (bez sudo!)
+            # Try to get real hostname (no sudo)
             hostname = None
             try:
-                # Metoda 1: socket.gethostbyaddr() - działa bez sudo
+                # Method 1: socket.gethostbyaddr() – works without sudo
                 hostname = socket.gethostbyaddr(ip)[0]
             except (socket.herror, socket.gaierror, OSError):
                 pass
             
-            # Metoda 2: Spróbuj pobrać z HTTP headers (jeśli port 80/443 jest otwarty)
+            # Method 2: Try HTTP headers (if port 80/443 open)
             if not hostname and (80 in open_ports or 443 in open_ports):
                 try:
                     import http.client
@@ -907,19 +779,19 @@ class WiFiScanner:
                     conn = http.client.HTTPConnection(ip, port, timeout=2)
                     conn.request("HEAD", "/")
                     response = conn.getresponse()
-                    # Sprawdź nagłówki Server lub Host
+                    # Check Server or Host headers
                     server_header = response.getheader("Server", "")
                     if server_header:
-                        # Wyodrębnij nazwę z nagłówka Server (np. "Apache/2.4.41 (Ubuntu)")
+                        # Extract name from Server header
                         hostname = server_header.split()[0] if server_header else None
                     conn.close()
                 except Exception:
                     pass
             
-            # Metoda 3: Spróbuj NetBIOS name (jeśli port 445/139 jest otwarty)
+            # Method 3: Try NetBIOS name (if port 445/139 open)
             if not hostname and (445 in open_ports or 139 in open_ports):
                 try:
-                    # NetBIOS może być dostępny bez sudo
+                    # NetBIOS may be available without sudo
                     result = subprocess.run(
                         ['nmblookup', '-A', ip],
                         capture_output=True,
@@ -936,20 +808,19 @@ class WiFiScanner:
                 except (FileNotFoundError, subprocess.TimeoutExpired):
                     pass
             
-            # Fallback: użyj IP jako nazwy
+            # Fallback: use IP as name
             if not hostname:
                 hostname = f"Device-{ip.split('.')[-1]}"
             
             device_type = self._detect_device_type(hostname, open_ports)
             
-            # Sprawdź bezpieczeństwo na podstawie portów
-            # WiFi ma szyfrowanie na poziomie sieci (WPA2/WPA3), ale sprawdzamy też porty aplikacyjne
-            # Porty szyfrowane: 443 (HTTPS), 8443 (HTTPS Alt), 993 (IMAPS), 995 (POP3S), 22 (SSH)
+            # Security from ports; WiFi has network-level encryption (WPA2/WPA3), we also check app ports
+            # Encrypted ports: 443, 8443, 993, 995, 22
             encrypted_ports = [443, 8443, 993, 995, 22]
             has_encryption = any(port in open_ports for port in encrypted_ports)
-            requires_pairing = True  # WiFi zazwyczaj wymaga hasła (WPA2/WPA3)
+            requires_pairing = True  # WiFi typically requires password (WPA2/WPA3)
             
-            # Określ typ szyfrowania
+            # Determine encryption type
             encryption_type = None
             if has_encryption:
                 if 443 in open_ports or 8443 in open_ports:
@@ -961,8 +832,7 @@ class WiFiScanner:
                 else:
                     encryption_type = "Encrypted (TLS/SSL)"
             else:
-                # WiFi ma szyfrowanie na poziomie sieci (WPA2/WPA3), więc nawet bez portów aplikacyjnych
-                # urządzenie jest chronione na poziomie sieci
+                # WiFi has network-level encryption, so device is protected even without app ports
                 if 80 in open_ports:
                     encryption_type = "Network-level encryption (WPA2/WPA3), HTTP unencrypted"
                 else:
@@ -989,7 +859,7 @@ class WiFiScanner:
                 }
             )
             
-            # Testuj podatności dla wszystkich otwartych portów
+            # Test vulnerabilities for all open ports
             port_vulnerabilities = self._test_port_vulnerabilities(open_ports)
             for vuln in port_vulnerabilities:
                 device.add_vulnerability(vuln)
@@ -1001,19 +871,10 @@ class WiFiScanner:
             return None
     
     def _detect_device_type(self, hostname: str, open_ports: List[int]) -> DeviceType:
-        """
-        Wykrywa typ urządzenia na podstawie nazwy i portów.
-        
-        Args:
-            hostname: Nazwa hosta
-            open_ports: Lista otwartych portów
-        
-        Returns:
-            DeviceType urządzenia
-        """
+        """Detect device type from name and ports. Returns DeviceType."""
         hostname_lower = hostname.lower()
         
-        # Sprawdź nazwę hosta
+        # Check hostname
         if any(keyword in hostname_lower for keyword in ["glucose", "gluco", "diabetes"]):
             return DeviceType.GLUCOSE_METER
         if any(keyword in hostname_lower for keyword in ["insulin", "pump"]):
@@ -1023,53 +884,42 @@ class WiFiScanner:
         if any(keyword in hostname_lower for keyword in ["pressure", "bp", "sphygmo"]):
             return DeviceType.BLOOD_PRESSURE
         
-        # Sprawdź porty medyczne
+        # Check medical ports
         if 104 in open_ports or 11112 in open_ports:  # DICOM
-            return DeviceType.UNKNOWN  # Urządzenie medyczne, ale nieznany typ
+            return DeviceType.UNKNOWN  # Medical but unknown type
         if 5000 in open_ports:  # HL7
             return DeviceType.UNKNOWN
         
-        # Sprawdź czy nazwa zawiera słowa medyczne
+        # Check if name contains medical keywords
         if any(keyword in hostname_lower for keyword in MEDICAL_DEVICE_KEYWORDS):
             return DeviceType.UNKNOWN
         
         return DeviceType.UNKNOWN
     
     def _analyze_security(self, open_ports: List[int], nm_host: Dict) -> tuple:
-        """
-        Analizuje bezpieczeństwo na podstawie otwartych portów.
-        
-        Args:
-            open_ports: Lista otwartych portów
-            nm_host: Dane hosta z nmap
+        """Analyze security from open ports. nm_host: host data from nmap.
         
         Returns:
             Tuple (has_encryption, requires_pairing)
         """
         has_encryption = False
-        requires_pairing = True  # WiFi zazwyczaj wymaga hasła
+        requires_pairing = True  # WiFi typically requires password
         
-        # Sprawdź czy są porty HTTPS (szyfrowane)
+        # Check for HTTPS (encrypted) ports
         if 443 in open_ports or 8443 in open_ports:
             has_encryption = True
         
-        # Sprawdź czy są tylko porty HTTP (niezaszyfrowane)
+        # Check if only HTTP (unencrypted) ports
         if 80 in open_ports and 443 not in open_ports:
             has_encryption = False
         
         return has_encryption, requires_pairing
     
     def _is_router_device(self, hostname: str, open_ports: List[int], ip: str) -> bool:
-        """
-        Sprawdza czy urządzenie jest routerem/gatewayem.
-        
-        Args:
-            hostname: Nazwa hosta
-            open_ports: Lista otwartych portów
-            ip: Adres IP
+        """Return True if device is router/gateway.
         
         Returns:
-            True jeśli urządzenie jest routerem
+
         """
         name_lower = hostname.lower()
         router_keywords = [
@@ -1081,7 +931,7 @@ class WiFiScanner:
         if any(keyword in name_lower for keyword in router_keywords):
             return True
         
-        # Sprawdź IP - routery często mają .1 na końcu
+        # Check IP – routers often end with .1
         if ip.endswith(".1") or ip.endswith(".254"):
             router_ports = [80, 443, 22, 161, 162]
             if any(p in open_ports for p in router_ports):
@@ -1091,16 +941,7 @@ class WiFiScanner:
         return False
     
     def _is_medical_device(self, hostname: str, open_ports: List[int]) -> bool:
-        """
-        Sprawdza czy urządzenie jest medyczne na podstawie nazwy i portów.
-        
-        Args:
-            hostname: Nazwa hosta
-            open_ports: Lista otwartych portów
-        
-        Returns:
-            True jeśli urządzenie jest medyczne
-        """
+        """Return True if device is medical (by name and ports)."""
         name_lower = hostname.lower()
         medical_keywords = [
             "medical", "med", "hospital", "clinic", "patient", "monitor",
@@ -1111,212 +952,165 @@ class WiFiScanner:
         if any(keyword in name_lower for keyword in medical_keywords):
             return True
         
-        # Sprawdź porty medyczne
+        # Check medical ports
         medical_ports = [104, 11112, 5000]
         if any(p in open_ports for p in medical_ports):
-            # Jeśli ma porty medyczne i mało innych portów, to może być urządzenie medyczne
+            # If it has medical ports and few others, likely medical device
             if len(open_ports) <= 5:
                 return True
         
         return False
     
     def _test_port_vulnerabilities(self, open_ports: List[int], is_router: bool = False, is_medical: bool = False) -> List[str]:
-        """
-        Analizuje podatności dla otwartych portów (TEORETYCZNE - na podstawie znanych podatności portów).
-        
-        UWAGA: To są TEORETYCZNE podatności na podstawie znanych słabości portów,
-        NIE rzeczywiste testy bezpieczeństwa. Rzeczywiste testy są wykonywane przez
-        VulnerabilityTester (z flagą --audit).
-        
-        Ta funkcja:
-        - Sprawdza kontekst urządzenia (router vs medyczne vs domowe)
-        - Dodaje tylko podatności które są istotne dla danego typu urządzenia
-        - Unika false positives dla routerów i urządzeń domowych
+        """Analyze vulnerabilities for open ports (THEORETICAL). Real tests: VulnerabilityTester (--audit).
+        Checks context (router vs medical vs home), adds only relevant vulnerabilities.
         
         Args:
-            open_ports: Lista otwartych portów do przeanalizowania
-            is_router: Czy urządzenie to router/gateway
-            is_medical: Czy urządzenie to urządzenie medyczne
-        
+            open_ports: List of open ports do przeanalizowania
+            is_router: whether device is router/gateway
+            is_medical: whether device is medical
+
         Returns:
-            Lista znalezionych podatności (jako stringi)
+            List of vulnerability strings
         """
         vulnerabilities = []
         
-        # Sprawdź każdy otwarty port
         for port in open_ports:
-            # Sprawdź czy port ma znane podatności w słowniku
             if port in PORT_VULNERABILITIES:
                 port_vulns = PORT_VULNERABILITIES[port]
-                
-                # Dla portów medycznych - tylko jeśli to rzeczywiście urządzenie medyczne
                 if port in [104, 11112]:  # DICOM
                     if is_medical:
                         vulnerabilities.extend([
-                            f"Port DICOM ({port}) otwarty - możliwość nieautoryzowanego dostępu do obrazów medycznych",
-                            "DICOM może przesyłać dane bez szyfrowania - wrażliwe obrazy medyczne narażone"
+                            f"Port DICOM ({port}) open – unauthorized access to medical images possible",
+                            "DICOM may send data unencrypted – sensitive medical images at risk"
                         ])
                         vulnerabilities.extend(port_vulns)
-                    # Jeśli nie jest medyczne, nie dodawaj podatności medycznych
-                
                 elif port == 5000:  # HL7
                     if is_medical:
                         vulnerabilities.extend([
-                            f"Port HL7 ({port}) otwarty - możliwość nieautoryzowanego dostępu do danych pacjentów",
-                            "HL7 może przesyłać dane bez szyfrowania - dane EHR/EMR narażone"
+                            f"Port HL7 ({port}) open – unauthorized access to patient data possible",
+                            "HL7 may send data unencrypted – EHR/EMR data at risk"
                         ])
                         vulnerabilities.extend(port_vulns)
-                    # Jeśli nie jest medyczne, nie dodawaj podatności medycznych
-                
                 elif port == 22:  # SSH
-                    # SSH dla routerów to normalne - nie dodawaj podatności
                     if not is_router:
                         port_name = "SSH"
                         vulnerabilities.extend([
-                            f"Port {port} ({port_name}) otwarty - sprawdź konfigurację bezpieczeństwa",
-                            f"Port {port} - możliwość ataków brute-force jeśli nie zabezpieczony"
+                            f"Port {port} ({port_name}) open – check security configuration",
+                            f"Port {port} – brute-force attacks possible if not secured"
                         ])
                         vulnerabilities.extend(port_vulns)
                 
                 elif port == 3389:  # RDP
-                    # RDP zawsze podatny jeśli otwarty (nawet dla routerów)
-                    if not is_router:  # Routery rzadko mają RDP
+                    if not is_router:
                         port_name = "RDP"
                         vulnerabilities.extend([
-                            f"Port {port} ({port_name}) otwarty - wysokie ryzyko nieautoryzowanego dostępu",
-                            f"Port {port} - możliwość ataków brute-force i exploity"
+                            f"Port {port} ({port_name}) open – high unauthorized access risk",
+                            f"Port {port} – brute-force and exploits possible"
                         ])
                         vulnerabilities.extend(port_vulns)
                 
-                elif port in [1433, 3306, 5432, 27017]:  # Bazy danych
-                    # Porty baz danych są bardzo niebezpieczne (nawet dla routerów)
-                    if not is_router:  # Routery nie powinny mieć baz danych
+                elif port in [1433, 3306, 5432, 27017]:  # Databases
+                    if not is_router:
                         db_name = {1433: "MSSQL", 3306: "MySQL", 5432: "PostgreSQL", 27017: "MongoDB"}.get(port, "Database")
                         vulnerabilities.extend([
-                            f"Port {port} ({db_name}) otwarty - bardzo wysokie ryzyko wycieku danych",
-                            f"Port {port} - możliwość SQL injection i nieautoryzowanego dostępu"
+                            f"Port {port} ({db_name}) open – very high data leak risk",
+                            f"Port {port} – SQL injection and unauthorized access possible"
                         ])
                         vulnerabilities.extend(port_vulns)
                 
                 elif port in [80, 8080]:  # HTTP
-                    # HTTP - sprawdź czy ma HTTPS
+                    # HTTP – check if HTTPS present
                     has_https = 443 in open_ports or 8443 in open_ports
                     if not has_https:
                         if is_router:
-                            # Dla routerów w sieci lokalnej to mniej krytyczne
-                            vulnerabilities.append(f"Port {port} (HTTP) bez HTTPS - zalecane użycie HTTPS dla routera")
+                            vulnerabilities.append(f"Port {port} (HTTP) without HTTPS – recommend HTTPS for router")
                         else:
                             vulnerabilities.extend([
-                                f"Port {port} (HTTP) otwarty bez HTTPS - dane przesyłane niezaszyfrowane",
-                                f"Port {port} - możliwość przechwycenia danych (sniffing)",
-                                f"Port {port} - ataki man-in-the-middle"
+                                f"Port {port} (HTTP) open without HTTPS – data sent unencrypted",
+                                f"Port {port} – data interception (sniffing) possible",
+                                f"Port {port} – man-in-the-middle attacks"
                             ])
                             vulnerabilities.extend(port_vulns)
-                    # Jeśli ma HTTPS, HTTP jest OK (może być redirect)
                 
                 elif port == 21:  # FTP
-                    # FTP zawsze podatny jeśli otwarty
-                    if not is_router:  # Routery rzadko mają FTP
+                    if not is_router:
                         vulnerabilities.extend([
-                            f"FTP bez szyfrowania - hasła i dane przesyłane jawnie",
-                            f"FTP - możliwość przechwycenia danych",
-                            f"FTP - ataki brute-force"
+                            f"FTP without encryption – passwords and data in clear",
+                            f"FTP – data interception possible",
+                            f"FTP – brute-force attacks"
                         ])
                         vulnerabilities.extend(port_vulns)
                 
                 elif port == 23:  # Telnet
-                    # Telnet zawsze podatny (nawet dla routerów)
                     vulnerabilities.extend([
-                        f"Telnet bez szyfrowania - wszystkie dane przesyłane jawnie",
-                        f"Telnet - bardzo wysokie ryzyko przechwycenia danych",
-                        f"Telnet - przestarzały i niebezpieczny protokół"
+                        f"Telnet without encryption – all data in clear",
+                        f"Telnet – very high data interception risk",
+                        f"Telnet – legacy and insecure protocol"
                     ])
                     vulnerabilities.extend(port_vulns)
                 
                 elif port in [25, 53]:  # SMTP, DNS
-                    # SMTP i DNS dla routerów to normalne - nie dodawaj podatności
                     if not is_router:
                         vulnerabilities.extend(port_vulns)
                 
                 elif port in [443, 8443]:  # HTTPS
-                    # HTTPS - sprawdź tylko przestarzałe wersje TLS (teoretyczne)
-                    # Rzeczywiste testy TLS są w VulnerabilityTester
-                    if not is_router:  # Dla routerów HTTPS jest OK
+                    if not is_router:
                         vulnerabilities.extend([
-                            f"HTTPS z przestarzałymi wersjami TLS (TLS 1.0/1.1) - podatność",
-                            f"HTTPS z nieprawidłowymi certyfikatami - ryzyko ataków MITM",
-                            f"HTTPS z słabymi algorytmami szyfrowania - możliwość złamania"
+                            f"HTTPS with legacy TLS (TLS 1.0/1.1) – vulnerability",
+                            f"HTTPS with invalid certificates – MITM risk",
+                            f"HTTPS with weak ciphers – possible compromise"
                         ])
                 
                 elif port in [135, 139, 445]:  # SMB/NetBIOS
-                    # SMB dla routerów to normalne - nie dodawaj podatności
                     if not is_router:
                         vulnerabilities.extend(port_vulns)
                 
                 elif port in [161, 162]:  # SNMP
-                    # SNMP dla routerów to normalne - nie dodawaj podatności
                     if not is_router:
                         vulnerabilities.extend(port_vulns)
                 
                 elif port in [5900, 5901]:  # VNC
-                    # VNC zawsze podatny jeśli otwarty
-                    if not is_router:  # Routery rzadko mają VNC
+                    if not is_router:
                         vulnerabilities.extend(port_vulns)
                 
-                # Dla innych portów - nie dodawaj automatycznie (zostaw dla VulnerabilityTester)
+                # Other ports – leave to VulnerabilityTester
                 # else:
                 #     vulnerabilities.extend(port_vulns)
         
-        # Dla routerów - znacznie ogranicz podatności
-        # Routery w sieci lokalnej mają normalne porty otwarte (80, 443, 22, 161, 162, 53, 25)
-        # Te porty są potrzebne do zarządzania routerem
+        # For routers, limit to critical vulnerabilities only
         if is_router:
-            # Dla routerów dodaj tylko krytyczne podatności
-            # Porty które są normalne dla routerów: 80, 443, 22, 161, 162, 53, 25, 135, 139, 445
             normal_router_ports = [80, 443, 22, 161, 162, 53, 25, 135, 139, 445]
-            
-            # Filtruj podatności - usuń te które dotyczą normalnych portów routera
             filtered_vulnerabilities = []
             for vuln in vulnerabilities:
-                # Sprawdź czy podatność dotyczy normalnego portu routera
                 is_normal_port = False
                 for port in normal_router_ports:
                     if str(port) in vuln and port in open_ports:
-                        # Sprawdź czy to nie jest krytyczna podatność (np. Telnet, FTP, RDP, bazy danych)
                         critical_keywords = ["telnet", "ftp", "rdp", "mssql", "mysql", "postgresql", "mongodb", "database"]
                         if not any(keyword in vuln.lower() for keyword in critical_keywords):
                             is_normal_port = True
                             break
-                
-                # Dodaj tylko jeśli to nie jest normalny port routera lub to krytyczna podatność
                 if not is_normal_port:
                     filtered_vulnerabilities.append(vuln)
-            
             return filtered_vulnerabilities
         
-        # Sprawdź kombinacje portów (dodatkowe podatności)
-        # Jeśli ma porty medyczne (DICOM/HL7) ale nie ma HTTPS, to dodatkowe ryzyko
         medical_ports = [104, 11112, 5000]
         has_medical_ports = any(port in open_ports for port in medical_ports)
         has_https = 443 in open_ports or 8443 in open_ports
-        
         if has_medical_ports and not has_https and is_medical:
             vulnerabilities.append(
-                "Porty medyczne (DICOM/HL7) otwarte bez HTTPS - dane medyczne mogą być przesyłane niezaszyfrowane"
+                "Medical ports (DICOM/HL7) open without HTTPS – medical data may be sent unencrypted"
             )
-        
-        # Jeśli ma porty administracyjne i bazy danych razem - bardzo wysokie ryzyko
         admin_ports = [22, 3389]
         db_ports = [1433, 3306, 5432, 27017]
         has_admin = any(port in open_ports for port in admin_ports)
         has_db = any(port in open_ports for port in db_ports)
-        
         if has_admin and has_db and not is_router:
             vulnerabilities.append(
-                "Porty administracyjne i bazy danych otwarte razem - bardzo wysokie ryzyko kompleksowego ataku"
+                "Admin and database ports open together – very high risk of full compromise"
             )
         
-        # Usuń duplikaty zachowując kolejność
+        # Deduplicate preserving order
         seen = set()
         unique_vulns = []
         for vuln in vulnerabilities:
@@ -1328,16 +1122,8 @@ class WiFiScanner:
     
     def _get_hostname(self, ip: str, open_ports: List[int]) -> str:
         """
-        Pobiera hostname urządzenia używając wielu metod.
-        
-        Args:
-            ip: Adres IP
-            open_ports: Lista otwartych portów
-        
-        Returns:
-            Hostname lub wygenerowana nazwa
+        Get device hostname using multiple methods (gethostbyaddr, HTTP, NetBIOS). Returns hostname or generated name.
         """
-        # Metoda 1: socket.gethostbyaddr() - działa bez sudo
         try:
             hostname = socket.gethostbyaddr(ip)[0]
             if hostname:
@@ -1345,7 +1131,6 @@ class WiFiScanner:
         except (socket.herror, socket.gaierror, OSError):
             pass
         
-        # Metoda 2: HTTP headers (jeśli port 80/443 jest otwarty)
         if 80 in open_ports or 443 in open_ports:
             try:
                 import http.client
@@ -1360,7 +1145,6 @@ class WiFiScanner:
             except Exception:
                 pass
         
-        # Metoda 3: NetBIOS (jeśli port 445/139 jest otwarty)
         if 445 in open_ports or 139 in open_ports:
             try:
                 result = subprocess.run(
@@ -1378,21 +1162,11 @@ class WiFiScanner:
             except (FileNotFoundError, subprocess.TimeoutExpired):
                 pass
         
-        # Fallback: użyj IP jako nazwy
         return f"Device-{ip.split('.')[-1]}"
     
     def _get_mac_address(self, ip: str) -> str:
-        """
-        Próbuje uzyskać adres MAC hosta.
-        
-        Args:
-            ip: Adres IP hosta
-        
-        Returns:
-            Adres MAC lub wygenerowany adres
-        """
+        """Get host MAC via ARP, or generate from IP for dedup only (do not use generated MAC for vendor lookup)."""
         try:
-            # Użyj ARP aby uzyskać MAC
             result = subprocess.run(
                 ['arp', '-n', ip],
                 capture_output=True,
@@ -1401,7 +1175,6 @@ class WiFiScanner:
             )
             
             if result.returncode == 0 and result.stdout:
-                # Wyodrębnij MAC z wyniku ARP
                 for line in result.stdout.split('\n'):
                     if ip in line:
                         parts = line.split()
@@ -1409,40 +1182,17 @@ class WiFiScanner:
                             return parts[2]
         except Exception:
             pass
-        
-        # Jeśli nie można uzyskać MAC, wygeneruj na podstawie IP
-        # UWAGA: To jest TYLKO dla identyfikacji - nie używaj tego MAC do lookup producenta!
         ip_parts = ip.split('.')
-        # Konwertuj stringi na int przed formatowaniem hex
         part2 = int(ip_parts[2]) if len(ip_parts) > 2 else 0
         part3 = int(ip_parts[3]) if len(ip_parts) > 3 else 0
-        # Zwróć wygenerowany MAC z flagą że jest wygenerowany (dla późniejszej identyfikacji)
         return f"00:00:{part2:02x}:{part3:02x}:00:00"
     
     def _get_manufacturer_from_mac_api(self, mac_address: str) -> Optional[str]:
-        """
-        Pobiera nazwę producenta na podstawie adresu MAC (OUI).
-        
-        Używa wielu źródeł w kolejności priorytetu:
-        1. IEEE OUI (oficjalna baza IEEE) - najlepsza, bez limitów
-        2. macvendors.com API (zewnętrzne API) - fallback
-        
-        Args:
-            mac_address: Adres MAC urządzenia
-        
-        Returns:
-            Nazwa producenta lub None
-        """
-        # WAŻNE: Nie szukaj producenta dla wygenerowanych MAC adresów (00:00:xx:xx:xx:xx)
-        # Te MAC są generowane na podstawie IP i nie reprezentują prawdziwego producenta
+        """Get manufacturer from MAC (OUI). Uses IEEE OUI first, then macvendors.com API. Returns None for generated MACs (00:00:xx)."""
         if mac_address.startswith("00:00:"):
-            return None  # Wygenerowany MAC - nie szukaj producenta
-        
-        # Sprawdź cache
+            return None
         if mac_address in self.mac_vendor_cache:
             return self.mac_vendor_cache[mac_address]
-        
-        # Metoda 1: IEEE OUI (oficjalna baza IEEE) - PRIORYTET
         try:
             from oui_lookup import get_oui_lookup
             oui_lookup = get_oui_lookup()
@@ -1452,22 +1202,20 @@ class WiFiScanner:
                 return manufacturer
         except Exception:
             pass
-        
-        # Metoda 2: macvendors.com API (zewnętrzne API) - fallback
         if not REQUESTS_AVAILABLE:
             return None
         
         try:
-            # Normalizuj format MAC (usuń myślniki/spacje, dodaj dwukropki)
+            # Normalize MAC format
             mac_normalized = mac_address.replace("-", ":").replace(" ", ":").replace(".", ":").upper()
             
-            # Sprawdź czy adres MAC nie jest losowy/prywatny
+            # Skip random/private MAC
             first_byte = int(mac_normalized.split(":")[0], 16)
             is_random = (first_byte & 0x02) != 0
             if is_random:
                 return None
             
-            # Wywołaj API
+            # Call API
             url = f"https://api.macvendors.com/{mac_normalized}"
             response = requests.get(url, timeout=3)
             
@@ -1486,24 +1234,9 @@ class WiFiScanner:
     
     def _scan_with_tshark(self, network_range: str) -> List[Device]:
         """
-        Skanuje sieć używając tshark (Wireshark CLI) - bardzo rozbudowane narzędzie.
-        
-        tshark może:
-        - Wykrywać aktywne hosty (ARP, DHCP, DNS)
-        - Skanować porty (TCP SYN scan)
-        - Pobierać MAC adresy
-        - Wykrywać usługi i protokoły
-        - Analizować ruch sieciowy
-        
-        Args:
-            network_range: Zakres sieci do skanowania (np. "192.168.1.0/24")
-        
-        Returns:
-            Lista wykrytych urządzeń lub pusta lista jeśli tshark nie jest dostępny
+        Scan network with tshark (Wireshark CLI). Returns list of devices or empty list if tshark unavailable.
         """
         devices: List[Device] = []
-        
-        # Sprawdź czy tshark jest dostępny
         try:
             result = subprocess.run(
                 ['tshark', '--version'],
@@ -1517,17 +1250,11 @@ class WiFiScanner:
         
         try:
             network_base = network_range.split('/')[0].rsplit('.', 1)[0]
-            
-            # Użyj tshark do przechwycenia pakietów ARP (wymaga uprawnień, ale ma fallback)
-            # Alternatywnie: użyj ping + tshark do analizy
-            console.print("[cyan]  Używam tshark do skanowania sieci...[/cyan]")
-            
-            # Skanuj pierwsze 20 adresów IP (dla szybkości)
+            console.print("[cyan]  Using tshark to scan network...[/cyan]")
             for i in range(1, 21):
                 ip = f"{network_base}.{i}"
                 
                 try:
-                    # Ping hosta
                     ping_result = subprocess.run(
                         ['ping', '-c', '1', '-W', '1', ip],
                         capture_output=True,
@@ -1535,11 +1262,7 @@ class WiFiScanner:
                     )
                     
                     if ping_result.returncode == 0:
-                        # Spróbuj użyć tshark do analizy ruchu (jeśli ma uprawnienia)
-                        # Alternatywnie: użyj podstawowych metod
                         mac = self._get_mac_address(ip)
-                        
-                        # Skanuj porty używając socket (działa bez root)
                         test_ports = [21, 22, 23, 25, 53, 80, 110, 135, 139, 143, 161, 162, 443, 445, 
                                      993, 995, 104, 5000, 11112, 1433, 3306, 3389, 5432, 5900, 5901, 
                                      8080, 8443, 27017]
@@ -1555,16 +1278,12 @@ class WiFiScanner:
                                 open_ports.append(port)
                         
                         if open_ports:
-                            # Pobierz hostname (wiele metod)
                             hostname = None
-                            
-                            # Metoda 1: socket.gethostbyaddr()
                             try:
                                 hostname = socket.gethostbyaddr(ip)[0]
                             except (socket.herror, socket.gaierror, OSError):
                                 pass
                             
-                            # Metoda 2: HTTP headers
                             if not hostname and (80 in open_ports or 443 in open_ports):
                                 try:
                                     import http.client
@@ -1579,7 +1298,6 @@ class WiFiScanner:
                                 except Exception:
                                     pass
                             
-                            # Metoda 3: NetBIOS
                             if not hostname and (445 in open_ports or 139 in open_ports):
                                 try:
                                     result = subprocess.run(
@@ -1601,18 +1319,16 @@ class WiFiScanner:
                             if not hostname:
                                 hostname = f"Device-{ip.split('.')[-1]}"
                             
-                            # Analizuj urządzenie
                             device = self._analyze_host_scapy(ip, mac, hostname, open_ports)
-                            
                             if device:
                                 devices.append(device)
-                                console.print(f"  [green]✓[/green] Wykryto: {hostname} ({ip})")
+                                console.print(f"  [green]✓[/green] Detected: {hostname} ({ip})")
                 
                 except Exception:
                     continue
             
             if devices:
-                console.print(f"\n[green]✅ Skanowanie tshark zakończone. Znaleziono {len(devices)} urządzeń.[/green]\n")
+                console.print(f"\n[green]✅ tshark scan complete. Found {len(devices)} devices.[/green]\n")
         
         except Exception:
             pass
@@ -1620,30 +1336,26 @@ class WiFiScanner:
         return devices
     
     def get_all_devices(self) -> List[Device]:
-        """Zwraca wszystkie wykryte urządzenia."""
+        """Return all detected devices."""
         return self.scanned_devices
 
 
 if __name__ == "__main__":
-    # Test skanera WiFi
     console.print(Panel.fit(
-        "[bold cyan]🔍 Test: Skaner WiFi[/bold cyan]\n"
-        "[dim]Skanuję urządzenia w sieci lokalnej...[/dim]",
+        "[bold cyan]🔍 Test: WiFi Scanner[/bold cyan]\n"
+        "[dim]Scanning devices on local network...[/dim]",
         style="cyan"
     ))
     console.print()
-    
     scanner = WiFiScanner()
     devices = scanner.scan_wifi_devices()
-    
-    console.print(f"\n[bold green]✅ Znaleziono {len(devices)} urządzeń:[/bold green]\n")
-    
+    console.print(f"\n[bold green]✅ Found {len(devices)} devices:[/bold green]\n")
     for device in devices:
         console.print(f"[cyan]{device.name}[/cyan] ({device.mac_address})")
         console.print(f"  IP: {device.metadata.get('ip_address', 'Unknown')}")
-        console.print(f"  Typ: {device.device_type.value}")
-        console.print(f"  Szyfrowanie: {'✅ Tak' if device.has_encryption else '❌ Nie'}")
+        console.print(f"  Type: {device.device_type.value}")
+        console.print(f"  Encryption: {'✅ Yes' if device.has_encryption else '❌ No'}")
         console.print(f"  Security Score: {device.security_score}/100")
         if device.vulnerabilities:
-            console.print(f"  Podatności: {', '.join(device.vulnerabilities)}")
+            console.print(f"  Vulnerabilities: {', '.join(device.vulnerabilities)}")
         console.print()
