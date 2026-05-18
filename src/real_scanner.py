@@ -261,36 +261,24 @@ class RealBLEScanner:
         def detection_callback(device: BLEDevice, advertisement_data: AdvertisementData):
             """
             Callback invoked by BleakScanner when a device is detected.
-            
-            We do not call this manually; BleakScanner calls it for each new BLE device.
-            
-            Args:
-                device: Device info (name, MAC address)
-                advertisement_data: Advertising data broadcast by the device
+            Can be called multiple times per device (each advertisement); we always
+            update stored name and ad data so late-arriving names are captured.
             """
+            # Always keep latest advertisement (some devices send local_name in a later packet)
+            self.advertisement_data[device.address] = advertisement_data
+            self.scanned_devices_dict[device.address] = device
+
+            device_name = None
+            if device.name:
+                device_name = str(device.name).strip()
+            elif advertisement_data.local_name:
+                device_name = str(advertisement_data.local_name).strip()
+            if device_name and device_name.strip():
+                normalized_address = device.address.upper()
+                self.device_names[normalized_address] = device_name.strip()
+
             if device.address not in discovered_devices:
                 discovered_devices.add(device.address)
-                self.advertisement_data[device.address] = advertisement_data
-                self.scanned_devices_dict[device.address] = device
-                
-                # Save device name now – it may not be available later
-                # device.name can be None; advertisement_data.local_name may have the name
-                device_name = None
-                
-                # Priorytet 1: device.name (najbardziej niezawodna)
-                if device.name:
-                    device_name = str(device.name).strip()
-                # Priorytet 2: advertisement_data.local_name
-                elif advertisement_data.local_name:
-                    device_name = str(advertisement_data.local_name).strip()
-                else:
-                    device_name = None
-                
-                # Always save name if available (may only be available during callback)
-                if device_name and device_name.strip():
-                    normalized_address = device.address.upper()
-                    self.device_names[normalized_address] = device_name.strip()
-                
                 display_name = device_name
                 if not display_name:
                     try:
@@ -301,7 +289,6 @@ class RealBLEScanner:
                             display_name = manufacturer
                     except Exception:
                         pass
-                
                 display_name = display_name or "Unknown Device"
                 console.print(f"  [green]✓[/green] Detected: [cyan]{display_name}[/cyan] ({device.address})")
                 if advertisement_data.rssi:
@@ -426,7 +413,19 @@ class RealBLEScanner:
         try:
             async with BleakClient(address, timeout=3.0) as client:
                 requires_pairing = False
-                
+
+                # Read GATT Device Name (0x2A00) when connected – same name phones often show
+                try:
+                    DEVICE_NAME_UUID = "00002a00-0000-1000-8000-00805f9b34fb"
+                    raw = await client.read_gatt_char(DEVICE_NAME_UUID)
+                    if raw:
+                        gatt_name = raw.decode("utf-8", errors="replace").strip()
+                        if gatt_name and len(gatt_name) < 200:
+                            name = gatt_name
+                            self.device_names[normalized_address] = name
+                except Exception:
+                    pass
+
                 try:
                     if hasattr(client, 'get_services') and callable(getattr(client, 'get_services')):
                         services = await client.get_services()
@@ -505,6 +504,35 @@ class RealBLEScanner:
         else:
             encryption_type = "No encryption"
         
+        # Full advertisement metadata for maximum scan accuracy
+        service_data_raw = getattr(ad_data, 'service_data', None) or {}
+        service_data_hex = {str(k): v.hex() for k, v in service_data_raw.items()} if service_data_raw else {}
+        tx_power = getattr(ad_data, 'tx_power', None)
+        local_name = getattr(ad_data, 'local_name', None)
+        # Human-readable service names (Bluetooth SIG) for each UUID
+        service_names = []
+        for uuid in service_uuids:
+            uuid_str = str(uuid).lower()
+            name_known = MEDICAL_SERVICE_UUIDS.get(uuid_str)
+            service_names.append(name_known if name_known else f"Service ({uuid_str[:8]}…)")
+
+        manufacturer_from_adv = self._extract_manufacturer(manufacturer_data)
+        manufacturer_source = "mac_oui" if manufacturer_from_mac else ("ble_company_id" if manufacturer_from_adv else "unknown")
+
+        metadata = {
+            "service_uuids": [str(uuid) for uuid in service_uuids],
+            "service_names": service_names,
+            "security_flags": security_flags,
+            "manufacturer_data": {str(k): v.hex() for k, v in manufacturer_data.items()},
+            "manufacturer_from_adv": manufacturer_from_adv,
+            "manufacturer_source": manufacturer_source,
+            "local_name": local_name,
+            "tx_power_dbm": tx_power,
+            "service_data": service_data_hex,
+        }
+        if tx_power is not None and rssi is not None:
+            metadata["path_loss_estimate_dbm"] = (tx_power - rssi)  # estimated path loss (for range analysis)
+
         # Create Device object
         device = Device(
             mac_address=address,
@@ -515,12 +543,10 @@ class RealBLEScanner:
             encryption_type=encryption_type,
             requires_pairing=requires_pairing,
             rssi=rssi,
-            manufacturer=manufacturer_from_mac or (self._extract_manufacturer(manufacturer_data) if not self._is_random_mac(address) else None),
-            metadata={
-                "service_uuids": [str(uuid) for uuid in service_uuids],
-                "security_flags": security_flags,
-                "manufacturer_data": {str(k): v.hex() for k, v in manufacturer_data.items()},
-            }
+            # Prefer OUI (public MAC), then BLE company identifier from manufacturer_data.
+            # For random/private MAC, BLE company identifier may still provide a useful vendor hint.
+            manufacturer=manufacturer_from_mac or manufacturer_from_adv,
+            metadata=metadata,
         )
         
         if not has_encryption:
@@ -701,9 +727,15 @@ class RealBLEScanner:
         if not manufacturer_data:
             return None
         
-        for company_id_str, data in manufacturer_data.items():
+        for company_id_raw, data in manufacturer_data.items():
             try:
-                company_id = int(company_id_str)
+                if isinstance(company_id_raw, int):
+                    company_id = company_id_raw
+                elif isinstance(company_id_raw, str):
+                    # Supports decimal strings ("76") and hex ("0x004C")
+                    company_id = int(company_id_raw, 0)
+                else:
+                    continue
                 company_ids = {
                     0: "Ericsson Technology Licensing",
                     6: "Microsoft Corporation",
@@ -712,6 +744,36 @@ class RealBLEScanner:
                     89: "Nordic Semiconductor ASA",
                     117: "Google Inc.",
                     152: "Samsung Electronics Co. Ltd.",
+                    13: "Texas Instruments Inc.",
+                    47: "STMicroelectronics",
+                    57: "Broadcom Corporation",
+                    93: "NXP Semiconductors",
+                    101: "Qualcomm Technologies International, Ltd.",
+                    175: "Seiko Epson Corporation",
+                    224: "Google",
+                    301: "Sony Corporation",
+                    343: "Logitech International SA",
+                    480: "Huawei Technologies Co., Ltd.",
+                    513: "LG Electronics",
+                    559: "Raspberry Pi Ltd",
+                    633: "Amazon.com Services, Inc.",
+                    741: "Fitbit, Inc.",
+                    1171: "Miele & Cie. KG",
+                    1182: "Acer, Inc.",
+                    1223: "Xiaomi Inc.",
+                    1351: "Huami (Amazfit)",
+                    1416: "Lenovo",
+                    1494: "Nokia",
+                    1570: "Withings",
+                    1694: "Tile, Inc.",
+                    1930: "Bose Corporation",
+                    2243: "Garmin International, Inc.",
+                    2279: "Philips Electronics Nederland B.V.",
+                    2452: "OnePlus Electronics",
+                    2504: "OPPO",
+                    2571: "realme",
+                    2717: "vivo Mobile Communication Co., Ltd.",
+                    3004: "Nothing Technology Limited",
                 }
                 if company_id in company_ids:
                     return company_ids[company_id]

@@ -106,10 +106,16 @@ class Device:
         if metadata_serializable:
             device_ip = metadata_serializable.get('ip_address') or metadata_serializable.get('ip')
         
-        return {
+        display_name = self.get_display_name()
+        identification_quality = self._get_identification_quality(display_name, metadata_serializable)
+
+        # Keep report concise: remove noisy empty/null fields from top-level output
+        payload = {
+            "label": display_name,
             "mac_address": self.mac_address,
             "name": self.name,
-            "display_name": self.get_display_name(),  # Human-readable name
+            "display_name": display_name,
+            "identification_quality": identification_quality,
             "device_fingerprint": self.get_device_fingerprint(),  # Unikalny fingerprint
             "device_type": self.device_type.value,
             "protocol": self.protocol.value,
@@ -127,6 +133,49 @@ class Device:
             "vulnerabilities": self.vulnerabilities,
             "metadata": metadata_serializable
         }
+        return {
+            k: v for k, v in payload.items()
+            if v is not None and v != "" and not (isinstance(v, (list, dict)) and len(v) == 0)
+        }
+
+    def _get_identification_quality(self, display_name: str, metadata: dict) -> str:
+        """
+        Estimate how confidently the device is identified:
+        - high: explicit non-generic name or manufacturer+model
+        - medium: useful hints (BLE local name/service names, manufacturer)
+        - low: mostly generic fallback naming
+        """
+        import re
+
+        name = (self.name or "").strip()
+        generic_name = name in ("", "Unknown", "Unknown Device")
+        generic_fallback = bool(re.match(r"^(Device|.+device)\s+\((MAC:\s*)?[0-9A-Fa-f]{6}\)$", display_name))
+        manufacturer_with_suffix = bool(
+            self.manufacturer and re.match(rf"^{re.escape(self.manufacturer)}\s+\([0-9A-Fa-f]{{6}}\)$", display_name)
+        )
+        ip_fallback = bool(re.match(r"^[A-Za-z0-9 _\-,.]+?\s*\(\d{1,3}(?:\.\d{1,3}){3}\)$", display_name))
+
+        # Manufacturer-only fallback ("<Vendor> Device") is useful but not high-confidence.
+        if display_name.endswith(" Device"):
+            return "medium"
+        if manufacturer_with_suffix:
+            return "medium"
+        if ip_fallback and not self.manufacturer and self.device_type == DeviceType.UNKNOWN:
+            return "low"
+
+        if self.manufacturer and self.model:
+            return "high"
+        if not generic_name and not generic_fallback and not display_name.startswith("Service ("):
+            return "high"
+
+        local_name = metadata.get("local_name")
+        service_names = metadata.get("service_names") or []
+        has_named_service = any(isinstance(s, str) and "Service (" not in s for s in service_names)
+
+        if (local_name and str(local_name).strip()) or self.manufacturer or has_named_service:
+            return "medium"
+
+        return "low"
     
     def _convert_value_for_json(self, value):
         """Convert single value to JSON-serializable type."""
@@ -178,20 +227,50 @@ class Device:
     def get_display_name(self) -> str:
         """
         Return a human-readable display name for the device.
-        Priority: device name (if not IP) → manufacturer + model → device type + MAC/IP → protocol + MAC/IP.
+        Priority: device name (if not generic) → BLE: metadata local_name / service_names →
+        manufacturer + model → device type + MAC → protocol + MAC.
         """
         import re
         
         # If name is IP, do not use as primary name
         is_ip = bool(re.match(r'^(\d{1,3}\.){3}\d{1,3}$', self.name))
-        
-        if not is_ip and self.name and self.name not in ["Unknown", "Unknown Device"]:
-            return self.name
+        if is_ip:
+            pass
+        elif self.name and self.name not in ("Unknown", "Unknown Device"):
+            # BLE: avoid generic inferred names like "Device (AB12CD)" or "Pulse oximeter (AB12CD)"
+            mac_short_suffix = re.search(r'\s*\(([0-9A-Fa-f]{6})\)\s*$', self.name)
+            if mac_short_suffix and (
+                self.name.startswith("Device (") or
+                self.name.startswith("Glucose meter (") or
+                self.name.startswith("Pulse oximeter (") or
+                self.name.startswith("Blood pressure monitor (") or
+                self.name.startswith("Fitness tracker (") or
+                self.name.startswith("Smartwatch (") or
+                self.name.startswith("Insulin pump (")
+            ):
+                # Prefer advertised/local name or first service name from BLE metadata
+                if self.protocol == Protocol.BLE and self.metadata:
+                    local = self.metadata.get("local_name") or self.metadata.get("gatt_device_name")
+                    if local and str(local).strip():
+                        return str(local).strip()
+                    services = self.metadata.get("service_names") or []
+                    if services and isinstance(services, list) and len(services) > 0:
+                        first_svc = services[0]
+                        if isinstance(first_svc, str) and first_svc and "Service (" not in first_svc:
+                            return f"{first_svc} ({mac_short_suffix.group(1)})"
+                        if isinstance(first_svc, str):
+                            return f"{first_svc} ({mac_short_suffix.group(1)})"
+            else:
+                return self.name
         
         # Try manufacturer + model
         if self.manufacturer and self.model:
             return f"{self.manufacturer} {self.model}"
         elif self.manufacturer:
+            # Keep devices distinguishable in SIEM/Splunk even when many map to same vendor.
+            if self.mac_address and self.mac_address != "--":
+                mac_short = self.mac_address.replace(":", "")[-6:].upper()
+                return f"{self.manufacturer} ({mac_short})"
             return f"{self.manufacturer} Device"
         
         # Try device type

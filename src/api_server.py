@@ -62,20 +62,23 @@ reports_dir.mkdir(exist_ok=True)
 app = Flask(__name__) if FLASK_AVAILABLE else None
 
 
-def load_latest_combined_report() -> Optional[Dict]:
-    """Load latest combined_report (contains all data)."""
-    combined_files = sorted(list(reports_dir.glob("combined_report_*.json")))
-    if not combined_files:
+def list_combined_reports() -> List[str]:
+    """List combined_report_*.json filenames in reports/ (newest first)."""
+    files = list(reports_dir.glob("combined_report_*.json"))
+    files.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+    return [p.name for p in files]
+
+
+def load_combined_report_by_filename(filename: str) -> Optional[Dict]:
+    """Load a specific combined_report by filename. Returns same format as load_latest_combined_report."""
+    path = reports_dir / filename
+    if not path.is_file() or not filename.startswith("combined_report_") or not filename.endswith(".json"):
         return None
-    
-    latest_file = combined_files[-1]
     try:
-        with open(latest_file, 'r', encoding='utf-8') as f:
+        with open(path, 'r', encoding='utf-8') as f:
             combined_data = json.load(f)
-            # Convert combined_report to dashboard-compatible format
             if 'scan' in combined_data and 'analysis' in combined_data:
-                # Merge data from scan and analysis
-                result = {
+                return {
                     'devices': combined_data.get('scan', {}).get('devices', []),
                     'summary': combined_data.get('analysis', {}).get('summary', {}),
                     'report_timestamp': combined_data.get('report_timestamp'),
@@ -87,11 +90,18 @@ def load_latest_combined_report() -> Optional[Dict]:
                     'threat_intelligence': combined_data.get('threat_intelligence', {}),
                     'threat_intelligence_summary': combined_data.get('threat_intelligence_summary', {})
                 }
-                return result
             return combined_data
     except Exception as e:
-        console.print(f"[yellow]⚠️  Error loading combined_report: {e}[/yellow]")
+        console.print(f"[yellow]⚠️  Error loading {filename}: {e}[/yellow]")
         return None
+
+
+def load_latest_combined_report() -> Optional[Dict]:
+    """Load latest combined_report (contains all data)."""
+    combined_files = sorted(list(reports_dir.glob("combined_report_*.json")), key=lambda p: p.stat().st_mtime)
+    if not combined_files:
+        return None
+    return load_combined_report_by_filename(combined_files[-1].name)
 
 
 def load_latest_scan() -> Optional[Dict]:
@@ -189,19 +199,41 @@ def filter_devices(devices: List[Dict], filters: Dict) -> List[Dict]:
     return filtered
 
 
-def render_dashboard_html(devices: List[Dict], summary: Dict, full_data: Dict) -> str:
-    """Render full graphical dashboard with report."""
+def render_dashboard_html(devices: List[Dict], summary: Dict, full_data: Dict,
+                          report_list: Optional[List[str]] = None, current_report: Optional[str] = None) -> str:
+    """Render full graphical dashboard with report. report_list/current_report enable report picker."""
     total = summary.get('total_devices', len(devices))
     high_risk = summary.get('high_risk_count', len([d for d in devices if d.get('security_score', 100) < 50]))
     medium_risk = summary.get('medium_risk_count', len([d for d in devices if 50 <= d.get('security_score', 100) < 80]))
     low_risk = summary.get('low_risk_count', len([d for d in devices if d.get('security_score', 100) >= 80]))
     avg_score = summary.get('average_security_score', sum(d.get('security_score', 0) for d in devices) / total if total > 0 else 0)
     
+    # Report picker (list of combined_report_*.json in reports/)
+    report_picker = ""
+    if report_list and len(report_list) > 0:
+        options = "".join(
+            f'<option value="{f}"' + (' selected' if f == current_report else '') + f'>{f}</option>'
+            for f in report_list
+        )
+        report_picker = f'''
+        <p class="report-picker" style="margin: 15px 0;">
+            <label for="report-select" style="margin-right:8px;">📁 Report:</label>
+            <select id="report-select" onchange="window.location='/dashboard?report='+encodeURIComponent(this.value)" style="padding:8px 12px; border-radius:6px; min-width:280px; background:white; color:#333;">
+                {options}
+            </select>
+        </p>'''
+    
     # Protocol stats
     protocols = {}
     for device in devices:
         proto = device.get('protocol', 'Unknown')
         protocols[proto] = protocols.get(proto, 0) + 1
+    
+    # AI anomaly count (devices with anomaly_detection.is_anomaly)
+    anomaly_count = sum(
+        1 for d in devices
+        if d.get('metadata', {}).get('anomaly_detection', {}).get('is_anomaly')
+    )
     
     html = f"""<!DOCTYPE html>
 <html lang="en">
@@ -381,6 +413,7 @@ def render_dashboard_html(devices: List[Dict], summary: Dict, full_data: Dict) -
 </head>
 <body>
     <div class="header">
+        {report_picker}
         <div class="nav">
             <a href="/">🏠 Home</a>
             <a href="/dashboard">📊 Full report</a>
@@ -411,6 +444,10 @@ def render_dashboard_html(devices: List[Dict], summary: Dict, full_data: Dict) -
         <div class="stat-card">
             <div class="stat-value" style="color: #667eea;">{avg_score:.1f}</div>
             <div class="stat-label">Average security score</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value" style="color: #9c27b0;">{anomaly_count}</div>
+            <div class="stat-label">🤖 AI anomalies</div>
         </div>
     </div>
     
@@ -460,22 +497,55 @@ def render_dashboard_html(devices: List[Dict], summary: Dict, full_data: Dict) -
             </div>
             """
         
-        # AI Anomaly Detection
+        # AI Anomaly Detection (show for every device so user sees that analysis ran)
         ai_info = ""
         if device.get('metadata', {}).get('anomaly_detection'):
             ai_data = device['metadata']['anomaly_detection']
+            score_val = ai_data.get('anomaly_score', 0)
+            reason = ai_data.get('reason', 'N/A')
             if ai_data.get('is_anomaly'):
                 ai_info = f"""
             <div class="detail-item" style="background: #ffebee;">
                 <div class="detail-label">🤖 AI: Wykryta anomalia</div>
-                <div class="detail-value" style="color: #c62828;">Score: {ai_data.get('anomaly_score', 0):.2f} | {ai_data.get('reason', 'N/A')}</div>
+                <div class="detail-value" style="color: #c62828;">Score: {score_val:.2f} | {reason}</div>
             </div>
             """
+            else:
+                ai_info = f"""
+            <div class="detail-item" style="opacity: 0.85;">
+                <div class="detail-label">🤖 AI</div>
+                <div class="detail-value">Normal (score {score_val:.2f})</div>
+            </div>
+            """
+        
+        # Title: prefer display_name (includes BLE local_name / service hint when name is generic)
+        display_name = device.get('display_name') or device.get('name') or 'Unknown'
+        # BLE identification: show advertised name and services so user can tell devices apart
+        ble_ident_html = ""
+        if device.get('protocol') == 'BLE':
+            meta = device.get('metadata') or {}
+            local_name = meta.get('local_name')
+            service_names = meta.get('service_names') or []
+            if local_name and str(local_name).strip() and str(local_name).strip() != display_name:
+                ble_ident_html += f"""
+            <div class="detail-item">
+                <div class="detail-label">📡 Advertised name</div>
+                <div class="detail-value">{str(local_name).strip()}</div>
+            </div>"""
+            if service_names:
+                services_str = ", ".join(s if isinstance(s, str) else str(s) for s in service_names[:8])
+                if len(service_names) > 8:
+                    services_str += f" (+{len(service_names) - 8})"
+                ble_ident_html += f"""
+            <div class="detail-item">
+                <div class="detail-label">🔌 Services (BLE)</div>
+                <div class="detail-value">{services_str}</div>
+            </div>"""
         
         html += f"""
         <div class="device-card {risk_class}">
             <div class="device-header">
-                <div class="device-name">{device.get('name', 'Unknown')}</div>
+                <div class="device-name">{display_name}</div>
                 <div class="device-score {score_class}">{score}/100</div>
             </div>
             <div class="device-details">
@@ -495,6 +565,7 @@ def render_dashboard_html(devices: List[Dict], summary: Dict, full_data: Dict) -
                     <div class="detail-label">Szyfrowanie</div>
                     <div class="detail-value">{'✅ Tak' if device.get('has_encryption') else '❌ Nie'}</div>
                 </div>
+                {ble_ident_html}
                 {microcontroller_info}
                 {ai_info}
             </div>
@@ -882,10 +953,32 @@ def render_devices_html(devices: List[Dict], filters: Dict) -> str:
             </div>
             """
         
+        display_name = device.get('display_name') or device.get('name') or 'Unknown'
+        ble_ident_html = ""
+        if device.get('protocol') == 'BLE':
+            meta = device.get('metadata') or {}
+            local_name = meta.get('local_name')
+            service_names = meta.get('service_names') or []
+            if local_name and str(local_name).strip():
+                ble_ident_html += f"""
+            <div class="info-item">
+                <div class="info-label">📡 Advertised name</div>
+                <div class="info-value">{str(local_name).strip()}</div>
+            </div>"""
+            if service_names:
+                services_str = ", ".join(s if isinstance(s, str) else str(s) for s in service_names[:8])
+                if len(service_names) > 8:
+                    services_str += f" (+{len(service_names) - 8})"
+                ble_ident_html += f"""
+            <div class="info-item">
+                <div class="info-label">🔌 Services (BLE)</div>
+                <div class="info-value">{services_str}</div>
+            </div>"""
+        
         html += f"""
         <div class="device-card {risk_class}">
             <div class="device-header">
-                <div class="device-name">{device.get('name', 'Unknown')}</div>
+                <div class="device-name">{display_name}</div>
                 <div class="device-score {score_class}">{score}/100</div>
             </div>
             <div class="device-info">
@@ -905,6 +998,7 @@ def render_devices_html(devices: List[Dict], filters: Dict) -> str:
                     <div class="info-label">Szyfrowanie</div>
                     <div class="info-value">{'✅ Tak' if device.get('has_encryption') else '❌ Nie'}</div>
                 </div>
+                {ble_ident_html}
                 {microcontroller_info}
             </div>
             {vulns_html}
@@ -1360,8 +1454,15 @@ if FLASK_AVAILABLE and app:
     
     @app.route('/dashboard', methods=['GET'])
     def dashboard():
-        """Full graphical dashboard with report."""
-        data = load_latest_data()
+        """Full graphical dashboard with report. Use ?report=filename to pick a report from reports/."""
+        report_list = list_combined_reports()
+        report_param = request.args.get('report')
+        if report_param and report_param in report_list:
+            data = load_combined_report_by_filename(report_param)
+            current_report = report_param
+        else:
+            data = load_latest_data()
+            current_report = report_list[0] if report_list else None
         if not data:
             return render_template_string("""
                 <html><head><title>Brak danych</title></head>
@@ -1376,7 +1477,7 @@ if FLASK_AVAILABLE and app:
         devices = data.get('devices', [])
         summary = data.get('summary', {})
         
-        return render_dashboard_html(devices, summary, data)
+        return render_dashboard_html(devices, summary, data, report_list=report_list, current_report=current_report)
     
     @app.route('/stats', methods=['GET'])
     def get_stats():

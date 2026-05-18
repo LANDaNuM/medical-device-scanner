@@ -63,6 +63,16 @@ MEDICAL_PORTS = {
     3306: "MySQL - MySQL, often in medical systems (high risk)",
 }
 
+# Short descriptions for network ports (for full ports_info in detailed scan)
+COMMON_PORT_DESCRIPTIONS = {
+    21: "FTP", 22: "SSH", 23: "Telnet", 25: "SMTP", 53: "DNS",
+    80: "HTTP", 110: "POP3", 135: "MSRPC", 139: "NetBIOS", 143: "IMAP",
+    161: "SNMP", 162: "SNMP Trap", 443: "HTTPS", 445: "SMB",
+    554: "RTSP", 1433: "MSSQL", 3306: "MySQL", 3389: "RDP",
+    5000: "HL7/UPnP", 7001: "AFS", 7002: "AFS", 8080: "HTTP-Alt",
+    8443: "HTTPS-Alt", 8554: "RTSP-Alt", 104: "DICOM", 11112: "DICOM-Alt",
+}
+
 # Vulnerabilities associated with medical and admin ports. These are THEORETICAL (known port weaknesses);
 # real security tests are done by VulnerabilityTester (--audit in scanner.py). Use --audit for deeper analysis.
 PORT_VULNERABILITIES = {
@@ -253,8 +263,8 @@ class WiFiScanner:
             # Check for duplicate
             is_duplicate = False
             
-            # If MAC is generated (00:00:xx), check by IP
-            if mac.startswith("00:00:"):
+            # If MAC is unknown, deduplicate by IP
+            if not mac or mac == "--":
                 if ip and ip in seen_ips:
                     is_duplicate = True
                 elif ip:
@@ -334,20 +344,28 @@ class WiFiScanner:
         gateway_ip: Optional[str] = None,
         gateway_mac: Optional[str] = None
     ) -> List[Dict]:
-        """Remove duplicates and proxy ARP 'ghosts'; one entry per MAC; skip .0 and .255."""
+        """Remove duplicates and proxy ARP 'ghosts'; prefer MAC dedup, fallback to IP."""
         if not active_hosts:
             return []
         seen_mac: Dict[str, Dict] = {}
+        seen_ip: set = set()
         out: List[Dict] = []
         gateway_mac_norm = (gateway_mac or "").upper().replace("-", ":") if gateway_mac else None
         gateway_ip_str = (gateway_ip or "").strip()
         for h in active_hosts:
             ip = (h.get("ip") or "").strip()
             mac = (h.get("mac") or "").strip().upper().replace("-", ":")
-            if not ip or not mac:
+            if not ip:
                 continue
             # Skip network and broadcast addresses
             if ip.endswith(".0") or ip.endswith(".255"):
+                continue
+            # Unknown MAC: fallback dedup by IP only
+            if not mac or mac == "--":
+                if ip in seen_ip:
+                    continue
+                seen_ip.add(ip)
+                out.append({"ip": ip, "mac": "--"})
                 continue
             # Proxy ARP: same MAC as gateway but different IP → likely ghost
             if gateway_mac_norm and mac == gateway_mac_norm and ip != gateway_ip_str:
@@ -355,6 +373,7 @@ class WiFiScanner:
             # One entry per MAC (first IP seen for this MAC)
             if mac not in seen_mac:
                 seen_mac[mac] = h
+                seen_ip.add(ip)
                 out.append(h)
         return out
     
@@ -748,13 +767,17 @@ class WiFiScanner:
             Obiekt Device lub None
         """
         try:
-            # Try connecting to common ports (but do not require them)
-            test_ports = [80, 443, 8080, 22, 3389, 554, 8554, 5000, 7001, 7002, 8443]
+            # Full port list for maximum scan accuracy (medical, network, management)
+            test_ports = [
+                21, 22, 23, 25, 53, 80, 110, 135, 139, 143, 161, 162,
+                443, 445, 104, 5000, 11112, 1433, 3306, 3389,
+                8080, 8443, 554, 8554, 7001, 7002,
+            ]
             open_ports = []
             
             for port in test_ports:
                 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                sock.settimeout(0.2)  # Short timeout for speed
+                sock.settimeout(0.3)  # Slightly longer timeout for more reliable detection
                 result = sock.connect_ex((ip, port))
                 sock.close()
                 
@@ -765,24 +788,23 @@ class WiFiScanner:
             
             # Try to get real hostname (no sudo)
             hostname = None
+            server_header = None
             try:
                 # Method 1: socket.gethostbyaddr() – works without sudo
                 hostname = socket.gethostbyaddr(ip)[0]
             except (socket.herror, socket.gaierror, OSError):
                 pass
             
-            # Method 2: Try HTTP headers (if port 80/443 open)
-            if not hostname and (80 in open_ports or 443 in open_ports):
+            # Method 2: Try HTTP headers (if port 80/443 open) – store Server header for accuracy
+            if 80 in open_ports or 443 in open_ports:
                 try:
                     import http.client
                     port = 443 if 443 in open_ports else 80
                     conn = http.client.HTTPConnection(ip, port, timeout=2)
                     conn.request("HEAD", "/")
                     response = conn.getresponse()
-                    # Check Server or Host headers
-                    server_header = response.getheader("Server", "")
-                    if server_header:
-                        # Extract name from Server header
+                    server_header = response.getheader("Server") or response.getheader("server")
+                    if server_header and not hostname:
                         hostname = server_header.split()[0] if server_header else None
                     conn.close()
                 except Exception:
@@ -855,7 +877,9 @@ class WiFiScanner:
                 manufacturer=manufacturer,
                 metadata={
                     "ip_address": ip,
-                    "open_ports": open_ports
+                    "open_ports": open_ports,
+                    "ports_info": {str(p): MEDICAL_PORTS.get(p) or COMMON_PORT_DESCRIPTIONS.get(p) or "Unknown" for p in open_ports},
+                    "server_header": server_header,
                 }
             )
             
@@ -1165,7 +1189,7 @@ class WiFiScanner:
         return f"Device-{ip.split('.')[-1]}"
     
     def _get_mac_address(self, ip: str) -> str:
-        """Get host MAC via ARP, or generate from IP for dedup only (do not use generated MAC for vendor lookup)."""
+        """Get host MAC via ARP. Return '--' when unavailable."""
         try:
             result = subprocess.run(
                 ['arp', '-n', ip],
@@ -1179,17 +1203,17 @@ class WiFiScanner:
                     if ip in line:
                         parts = line.split()
                         if len(parts) >= 3:
-                            return parts[2]
+                            mac = parts[2].strip().upper().replace("-", ":")
+                            # Ignore incomplete/unknown ARP entries
+                            if mac and mac not in ("(INCOMPLETE)", "<INCOMPLETE>", "INCOMPLETE"):
+                                return mac
         except Exception:
             pass
-        ip_parts = ip.split('.')
-        part2 = int(ip_parts[2]) if len(ip_parts) > 2 else 0
-        part3 = int(ip_parts[3]) if len(ip_parts) > 3 else 0
-        return f"00:00:{part2:02x}:{part3:02x}:00:00"
+        return "--"
     
     def _get_manufacturer_from_mac_api(self, mac_address: str) -> Optional[str]:
         """Get manufacturer from MAC (OUI). Uses IEEE OUI first, then macvendors.com API. Returns None for generated MACs (00:00:xx)."""
-        if mac_address.startswith("00:00:"):
+        if not mac_address or mac_address == "--" or mac_address.startswith("00:00:"):
             return None
         if mac_address in self.mac_vendor_cache:
             return self.mac_vendor_cache[mac_address]

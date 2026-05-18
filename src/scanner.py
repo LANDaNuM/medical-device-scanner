@@ -1,33 +1,34 @@
 #!/usr/bin/env python3
 """
-Main medical device scanner module.
+Główny moduł skanera urządzeń medycznych.
 
-This module ties together:
-- BLE scanner (Bluetooth Low Energy)
-- WiFi scanner (local network)
-- USB scanner (USB-attached devices)
-- NFC scanner (cards and tags)
-- Security analysis
-- Vulnerability testing and audit
-- Reporting
+Ten moduł łączy wszystkie komponenty:
+- Prawdziwy skaner BLE (Bluetooth Low Energy)
+- Skaner WiFi (sieć lokalna)
+- Skaner USB (urządzenia podłączone przez USB)
+- Skaner NFC (karty i tagi NFC)
+- Analiza bezpieczeństwa
+- Testowanie podatności i symulacja ataków (audyt bezpieczeństwa)
+- Raportowanie
 
-USAGE:
-    python src/scanner.py                    # Scan all protocols
-    python src/scanner.py --ble              # BLE only
-    python src/scanner.py --wifi             # WiFi only
-    python src/scanner.py --usb              # USB only
-    python src/scanner.py --nfc              # NFC only
-    python src/scanner.py --ble --wifi       # BLE and WiFi
-    python src/scanner.py --audit            # Full security audit (vulnerability tests)
-    python src/scanner.py --wifi --audit     # WiFi + audit
+UŻYCIE:
+    python src/scanner.py                    # Skanuj wszystkie protokoły
+    python src/scanner.py --ble              # Tylko BLE
+    python src/scanner.py --wifi             # Tylko WiFi
+    python src/scanner.py --usb              # Tylko USB
+    python src/scanner.py --nfc              # Tylko NFC
+    python src/scanner.py --ble --wifi        # BLE i WiFi
+    python src/scanner.py --audit            # Pełny audyt bezpieczeństwa (testy podatności)
+    python src/scanner.py --wifi --audit     # WiFi + audyt bezpieczeństwa
 """
 
 import sys
 import os
 
-# Silence TensorFlow CUDA/GPU messages before any other imports
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
-os.environ['CUDA_VISIBLE_DEVICES'] = ''  # Use CPU only
+# Wycisz komunikaty TensorFlow o CUDA/GPU PRZED jakimkolwiek importem
+# Musi być na samym początku, przed importem numpy i innych bibliotek
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # Wycisz wszystkie komunikaty TensorFlow
+os.environ['CUDA_VISIBLE_DEVICES'] = ''  # Wyłącz CUDA - wymusza użycie tylko CPU
 
 import json
 import csv
@@ -38,17 +39,19 @@ from pathlib import Path
 from typing import Optional, Dict, Any
 import numpy as np
 
-# Load env from .env if present
+# Załaduj zmienne środowiskowe z pliku .env (jeśli istnieje)
 try:
     from dotenv import load_dotenv
+    # Znajdź katalog projektu (tam gdzie jest .env)
     project_dir = Path(__file__).parent.parent
     env_file = project_dir / ".env"
     if env_file.exists():
         load_dotenv(env_file)
     else:
+        # Fallback: spróbuj w katalogu roboczym
         load_dotenv()
 except ImportError:
-    pass
+    pass  # python-dotenv nie jest wymagane, ale przydatne
 import platform
 from typing import List
 from pathlib import Path
@@ -58,7 +61,7 @@ from rich.panel import Panel
 
 from device import Device, DeviceType
 
-# Import real scanner modules
+# Próbuj zaimportować wszystkie prawdziwe skanery
 try:
     from real_scanner import RealBLEScanner
     BLE_SCANNER_AVAILABLE = True
@@ -115,13 +118,21 @@ except ImportError:
     ANOMALY_DETECTOR_AVAILABLE = False
     AnomalyDetector = None
 
-# Rich console for terminal output
+# Porównywanie skanów - usunięte (nie jest potrzebne)
+
+# Rich console dla pięknego wyświetlania w terminalu
 console = Console()
 
 
 def make_json_serializable(obj: Any) -> Any:
     """
-    Convert numpy and other custom types to JSON-serializable types.
+    Konwertuje obiekty numpy i inne niestandardowe typy na typy serializowalne do JSON.
+    
+    Args:
+        obj: Obiekt do konwersji
+        
+    Returns:
+        Obiekt serializowalny do JSON
     """
     if isinstance(obj, (np.integer, np.floating)):
         return obj.item()
@@ -141,21 +152,34 @@ def make_json_serializable(obj: Any) -> Any:
 
 class MedicalDeviceScanner:
     """
-    Main medical device scanner class.
-    Manages scanning (BLE, WiFi, USB, NFC), security analysis, reporting, and results.
+    Główna klasa skanera urządzeń medycznych.
+    
+    Ta klasa:
+    1. Zarządza skanowaniem (BLE, WiFi, USB, NFC)
+    2. Analizuje bezpieczeństwo urządzeń
+    3. Generuje raporty
+    4. Przechowuje wyniki
     """
     
     def __init__(self, protocols: List[str] = None):
         """
-        Initialize scanner.
+        Inicjalizacja skanera.
+        
         Args:
-            protocols: Protocols to scan (['ble', 'wifi', 'usb', 'nfc']). If None, scan all.
+            protocols: Lista protokołów do skanowania (['ble', 'wifi', 'usb', 'nfc'])
+                      Jeśli None, skanuje wszystkie dostępne protokoły
         """
+        # Inicjalizuj skanery dla każdego protokołu
         self.scanners = {}
+        
+        # Katalogi do zapisywania danych
+        # Używamy Path do niezależnej od systemu ścieżki
         project_root = Path(__file__).parent.parent
+        # Raporty i skany zapisujemy bezpośrednio w głównym katalogu projektu
         self.scans_dir = project_root / "reports"
         self.reports_dir = project_root / "reports"
         self.exports_dir = project_root / "exports"
+        # Utwórz katalogi jeśli nie istnieją
         self.scans_dir.mkdir(exist_ok=True)
         self.reports_dir.mkdir(exist_ok=True)
         self.exports_dir.mkdir(exist_ok=True)
@@ -168,51 +192,55 @@ class MedicalDeviceScanner:
             if BLE_SCANNER_AVAILABLE:
                 try:
                     self.scanners['ble'] = RealBLEScanner()
-                    console.print("[green]✅ BLE scanner ready[/green]")
+                    console.print("[green]✅ Skaner BLE gotowy[/green]")
                 except ImportError as e:
-                    console.print(f"[yellow]⚠️  BLE scanner unavailable: {e}[/yellow]")
+                    console.print(f"[yellow]⚠️  Skaner BLE niedostępny: {e}[/yellow]")
+                    # Sprawdź czy to problem z venv (gdy używamy sudo)
                     venv_path = os.getenv('VIRTUAL_ENV')
                     if venv_path and 'venv' in str(venv_path):
-                        console.print("[yellow]   Note: sudo may not see venv libraries.[/yellow]")
-                        console.print("[yellow]   Option 1 (recommended for BLE): python3 src/scanner.py --ble[/yellow]")
-                        console.print("[yellow]   Option 2 (with sudo for scapy): source venv/bin/activate; sudo -E python3 src/scanner.py --wifi[/yellow]")
+                        console.print("[yellow]   Uwaga: Używasz sudo, który nie widzi bibliotek z venv![/yellow]")
+                        console.print("[yellow]   Rozwiązanie 1 (ZALECANE - bez sudo dla BLE):[/yellow]")
+                        console.print("[yellow]     python3 src/scanner.py --ble[/yellow]")
+                        console.print("[yellow]   Rozwiązanie 2 (Z sudo dla scapy):[/yellow]")
+                        console.print("[yellow]     source venv/bin/activate[/yellow]")
+                        console.print("[yellow]     sudo -E python3 src/scanner.py --wifi[/yellow]")
                     else:
-                        console.print("[yellow]   Install: pip install bleak[/yellow]")
+                        console.print("[yellow]   Zainstaluj: pip install bleak[/yellow]")
             else:
-                console.print("[yellow]⚠️  BLE scanner unavailable (install: pip install bleak)[/yellow]")
+                console.print("[yellow]⚠️  Skaner BLE niedostępny (zainstaluj: pip install bleak)[/yellow]")
         
         # WiFi Scanner
         if 'wifi' in protocols:
             if WIFI_SCANNER_AVAILABLE:
                 self.scanners['wifi'] = WiFiScanner()
-                console.print("[green]✅ WiFi scanner ready[/green]")
+                console.print("[green]✅ Skaner WiFi gotowy[/green]")
             else:
-                console.print("[yellow]⚠️  WiFi scanner unavailable (install: pip install python-nmap)[/yellow]")
+                console.print("[yellow]⚠️  Skaner WiFi niedostępny (zainstaluj: pip install python-nmap)[/yellow]")
         
         # USB Scanner
         if 'usb' in protocols:
             if USB_SCANNER_AVAILABLE:
                 self.scanners['usb'] = USBScanner()
-                console.print("[green]✅ USB scanner ready[/green]")
+                console.print("[green]✅ Skaner USB gotowy[/green]")
             else:
-                console.print("[yellow]⚠️  USB scanner unavailable (install: pip install pyusb pyserial)[/yellow]")
+                console.print("[yellow]⚠️  Skaner USB niedostępny (zainstaluj: pip install pyusb pyserial)[/yellow]")
         
         # NFC Scanner
         if 'nfc' in protocols:
             if NFC_SCANNER_AVAILABLE:
                 self.scanners['nfc'] = NFCScanner()
-                console.print("[green]✅ NFC scanner ready[/green]")
+                console.print("[green]✅ Skaner NFC gotowy[/green]")
             else:
-                console.print("[yellow]⚠️  NFC scanner unavailable (install: pip install nfcpy pyscard)[/yellow]")
+                console.print("[yellow]⚠️  Skaner NFC niedostępny (zainstaluj: pip install nfcpy pyscard)[/yellow]")
         
         if not self.scanners:
-            console.print("[red]❌ No scanners available![/red]")
-            console.print("[yellow]   Install dependencies: pip install -r requirements.txt[/yellow]\n")
+            console.print("[red]❌ Brak dostępnych skanerów![/red]")
+            console.print("[yellow]   Zainstaluj zależności: pip install -r requirements.txt[/yellow]\n")
         
         console.print()
         self.devices: List[Device] = []
         
-        # Vulnerability tester
+        # Inicjalizuj tester podatności jeśli dostępny
         if VULNERABILITY_TESTER_AVAILABLE and VulnerabilityTester:
             try:
                 from cve_lookup import CVELookup
@@ -220,148 +248,206 @@ class MedicalDeviceScanner:
                 use_cve_api = cve_lookup.nvd_api_key is not None
                 self.vulnerability_tester = VulnerabilityTester(use_cve_api=use_cve_api)
             except Exception as e:
-                console.print(f"[yellow]⚠️  Could not init VulnerabilityTester: {e}[/yellow]")
+                console.print(f"[yellow]⚠️  Nie można zainicjalizować VulnerabilityTester: {e}[/yellow]")
                 self.vulnerability_tester = None
         else:
             self.vulnerability_tester = None
         
-        # External APIs
+        # Inicjalizuj zewnętrzne API (jeśli dostępne)
         if EXTERNAL_APIS_AVAILABLE and ExternalAPIs:
             try:
                 self.external_apis = ExternalAPIs()
             except Exception as e:
-                console.print(f"[yellow]⚠️  Could not init ExternalAPIs: {e}[/yellow]")
+                console.print(f"[yellow]⚠️  Nie można zainicjalizować ExternalAPIs: {e}[/yellow]")
                 self.external_apis = None
         else:
             self.external_apis = None
         
         
-        # Encryption analyzer
+        # Inicjalizuj analizator szyfrowania (jeśli dostępny)
         if ENCRYPTION_ANALYZER_AVAILABLE and EncryptionAnalyzer:
             try:
                 self.encryption_analyzer = EncryptionAnalyzer()
             except Exception as e:
-                console.print(f"[yellow]⚠️  Could not init EncryptionAnalyzer: {e}[/yellow]")
+                console.print(f"[yellow]⚠️  Nie można zainicjalizować EncryptionAnalyzer: {e}[/yellow]")
                 self.encryption_analyzer = None
         else:
             self.encryption_analyzer = None
         
-        # Init anomaly detector if available
+        # Inicjalizuj detektor anomalii (jeśli dostępny)
         if ANOMALY_DETECTOR_AVAILABLE and AnomalyDetector:
             try:
                 self.anomaly_detector = AnomalyDetector(contamination=0.1)
-                # Try to load a previously trained model
+                # Spróbuj wczytać wcześniej wytrenowany model
                 if self.anomaly_detector.load_model():
-                    console.print("[green]✅ Anomaly detector ready (model loaded)[/green]")
+                    console.print("[green]✅ Detektor anomalii gotowy (wczytano model)[/green]")
                 else:
-                    console.print("[green]✅ Anomaly detector ready (will train on first use)[/green]")
+                    console.print("[green]✅ Detektor anomalii gotowy (będzie trenowany przy pierwszym użyciu)[/green]")
             except Exception as e:
-                console.print(f"[yellow]⚠️  Could not init AnomalyDetector: {e}[/yellow]")
+                console.print(f"[yellow]⚠️  Nie można zainicjalizować AnomalyDetector: {e}[/yellow]")
                 self.anomaly_detector = None
         else:
             self.anomaly_detector = None
     
     def scan_all(self, ble_duration: Optional[int] = None) -> List[Device]:
         """
-        Scan all available protocols (BLE, WiFi, USB, NFC).
-        ble_duration: BLE scan duration in seconds (None = default from --ble-duration or 20).
-        Returns list of all detected devices.
+        Skanuje wszystkie dostępne protokoły (BLE, WiFi, USB, NFC).
+        
+        Args:
+            ble_duration: Czas skanowania BLE w sekundach (None = domyślny z argumentu --ble-duration lub 25)
+        
+        Returns:
+            Lista wszystkich wykrytych urządzeń
         """
-        console.print("[bold blue]🔍 Starting full scan...[/bold blue]\n")
+        console.print("[bold blue]🔍 Rozpoczynam kompleksowe skanowanie...[/bold blue]\n")
         
         all_devices = []
-        _ble_sec = 20 if ble_duration is None else ble_duration
+        _ble_sec = 25 if ble_duration is None else ble_duration  # 25s default for better accuracy (more devices detected)
         
-        # Scan BLE
+        # Skanuj BLE
         if 'ble' in self.scanners:
-            console.print(Panel.fit("📡 Scanning Bluetooth Low Energy (BLE)", style="cyan"))
+            console.print(Panel.fit("📡 Skanowanie Bluetooth Low Energy (BLE)", style="cyan"))
             ble_devices = self._scan_ble_async(duration=_ble_sec)
             all_devices.extend(ble_devices)
             console.print()
         
-        # Scan WiFi
+        # Skanuj WiFi
         if 'wifi' in self.scanners:
-            console.print(Panel.fit("📡 Scanning WiFi", style="cyan"))
+            console.print(Panel.fit("📡 Skanowanie WiFi", style="cyan"))
             wifi_devices = self.scanners['wifi'].scan_wifi_devices()
             all_devices.extend(wifi_devices)
             console.print()
         
-        # Scan USB
+        # Skanuj USB
         if 'usb' in self.scanners:
-            console.print(Panel.fit("🔌 Scanning USB", style="cyan"))
+            console.print(Panel.fit("🔌 Skanowanie USB", style="cyan"))
             usb_devices = self.scanners['usb'].scan_usb_devices()
             all_devices.extend(usb_devices)
             console.print()
         
-        # Scan NFC
+        # Skanuj NFC
         if 'nfc' in self.scanners:
-            console.print(Panel.fit("📱 Scanning NFC", style="cyan"))
+            console.print(Panel.fit("📱 Skanowanie NFC", style="cyan"))
             nfc_devices = self.scanners['nfc'].scan_nfc_devices(duration=5)
             all_devices.extend(nfc_devices)
             console.print()
         
         self.devices = all_devices
         
-        console.print(f"[bold green]✅ Scan complete![/bold green]")
-        console.print(f"[green]Found {len(all_devices)} devices in total[/green]\n")
+        console.print(f"[bold green]✅ Skanowanie zakończone![/bold green]")
+        console.print(f"[green]Znaleziono łącznie {len(all_devices)} urządzeń medycznych[/green]\n")
         
         return all_devices
     
     def _scan_ble_async(self, duration: int = 10) -> List[Device]:
         """
-        Wrapper for async BLE scanning. BLE scanner uses async; this converts to sync.
-        Windows: needs a new event loop. Linux/Mac: asyncio.run().
+        Wrapper do asynchronicznego skanowania BLE.
+        
+        Prawdziwy skaner BLE używa asynchronicznych funkcji (async/await),
+        ale główny moduł scanner.py jest synchroniczny. Ta funkcja konwertuje
+        asynchroniczne wywołanie na synchroniczne.
+        
+        Różnice między systemami:
+        - Windows: Wymaga utworzenia nowego event loop
+        - Linux/Mac: Można użyć asyncio.run() bezpośrednio
+        
+        Args:
+            duration: Czas skanowania w sekundach
+            
+        Returns:
+            Lista wykrytych urządzeń
         """
         if platform.system() == "Windows":
+            # Windows wymaga innego event loop (to jest specyfika Windows)
+            # Musimy utworzyć nowy event loop i użyć go
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
             try:
+                # Uruchom asynchroniczną funkcję w synchronicznym kontekście
                 return loop.run_until_complete(self.scanners['ble'].scan_ble_devices(duration))
             finally:
+                # Zawsze zamknij event loop, nawet jeśli wystąpił błąd
                 loop.close()
         else:
+            # Linux/Mac - możemy użyć asyncio.run() bezpośrednio
+            # asyncio.run() automatycznie tworzy i zarządza event loop
             return asyncio.run(self.scanners['ble'].scan_ble_devices(duration))
     
     def analyze_security(self, run_vulnerability_tests: bool = False):
         """
-        Analyze security of all detected devices: security scores, vulnerabilities,
-        FDA compliance, optional audit (--audit). Vulnerabilities come from scanning
-        (basic) and/or vulnerability_tester (detailed).
+        Analizuje bezpieczeństwo wszystkich wykrytych urządzeń.
+        
+        Ta funkcja:
+        1. Oblicza security scores
+        2. Wykrywa podatności (podstawowe - teoretyczne na podstawie znanych słabości portów)
+        3. Sprawdza zgodność z FDA guidelines
+        4. (Opcjonalnie) Wykonuje testy podatności i symulację ataków (z flagą --audit)
+        
+        UWAGA o podatnościach:
+        - Podstawowe skanowanie: Podatności są TEORETYCZNE - na podstawie znanych słabości portów
+          (np. "Port 22 otwarty - możliwość ataków brute-force"). To są ogólne ostrzeżenia.
+        - Audyt (--audit): Wykonuje bardziej szczegółowe testy, sprawdza konfigurację,
+          symuluje ataki (bez faktycznego atakowania), używa CVE i znanych exploity.
+        
+        Podatności są dodawane w dwóch miejscach:
+        1. Podczas skanowania (wifi_scanner.py) - podstawowe, teoretyczne
+        2. Podczas audytu (vulnerability_tester.py) - szczegółowe, kontekstowe
+        
+        Args:
+            run_vulnerability_tests: Jeśli True, wykonuje pełny audyt bezpieczeństwa
         """
-        console.print("[bold blue]🔒 Analyzing device security...[/bold blue]\n")
+        console.print("[bold blue]🔒 Analizuję bezpieczeństwo urządzeń...[/bold blue]\n")
         
         for device in self.devices:
+            # Oblicz wynik bezpieczeństwa
             device.calculate_security_score()
+            
+            # Sprawdź zgodność z FDA guidelines
             self._check_fda_compliance(device)
+            
+            # Wzbogać dane zewnętrznymi API (jeśli dostępne)
             if self.external_apis:
                 self._enrich_device_with_external_apis(device)
+            
+            # Analizuj szyfrowanie (jeśli dostępne)
             if self.encryption_analyzer:
                 self._analyze_encryption(device)
+            
+            # Wykonaj testy podatności jeśli włączone
             if run_vulnerability_tests and self.vulnerability_tester:
                 self._run_vulnerability_tests(device)
         
+        # Dla każdego urządzenia: na jakie ataki jest podatne (z audytu albo z portów/podatności)
         if self.vulnerability_tester:
             for device in self.devices:
                 if "attack_susceptibility" not in (device.metadata or {}):
                     device.metadata = device.metadata or {}
                     device.metadata["attack_susceptibility"] = self.vulnerability_tester.get_attack_susceptibility(device)
         
+        # Wykryj anomalie używając ML (jeśli dostępne) - zawsze włączone
         if self.anomaly_detector and len(self.devices) > 0:
             self._detect_anomalies()
         
-        console.print("[bold green]✅ Security analysis complete[/bold green]\n")
+        console.print("[bold green]✅ Analiza bezpieczeństwa zakończona[/bold green]\n")
     
     def _analyze_encryption(self, device: Device):
-        """Analyze device encryption and add results to metadata."""
+        """
+        Analizuje szyfrowanie urządzenia i dodaje wyniki do metadanych.
+        
+        Args:
+            device: Urządzenie do analizy
+        """
         if not self.encryption_analyzer:
             return
+        
         try:
+            # Wykonaj analizę szyfrowania
             analysis = self.encryption_analyzer.analyze(
                 encryption_type=device.encryption_type,
                 has_encryption=device.has_encryption
             )
             
-            # Store results in metadata
+            # Zapisz wyniki w metadanych
             if not device.metadata:
                 device.metadata = {}
             
@@ -373,53 +459,66 @@ class MedicalDeviceScanner:
                 "recommendations": analysis.recommendations
             }
             
+            # Dodaj podatności jeśli szyfrowanie jest słabe
             if analysis.is_weak:
                 for issue in analysis.issues:
                     device.add_vulnerability(f"Encryption: {issue}")
             
         except Exception as e:
+            # Nie wyświetlaj błędów - analiza jest opcjonalna
             pass
     
     def _enrich_device_with_external_apis(self, device: Device):
-        """Enrich device with external API data (VirusTotal, Shodan)."""
+        """
+        Wzbogaca urządzenie danymi z zewnętrznych API (VirusTotal, Shodan).
+        
+        Args:
+            device: Urządzenie do wzbogacenia
+        """
         if not self.external_apis:
             return
+        
         try:
+            # Wyciągnij IP z metadanych (dla WiFi) lub z nazwy
             device_ip = None
             if device.metadata:
                 device_ip = device.metadata.get('ip_address') or device.metadata.get('ip')
             
+            # Jeśli nie ma IP w metadanych, spróbuj wyciągnąć z nazwy (dla WiFi)
             if not device_ip and device.protocol.value == "WiFi":
+                # Często nazwa WiFi to IP (np. "192.168.1.1")
                 import re
                 ip_match = re.match(r'^(\d{1,3}\.){3}\d{1,3}$', device.name)
                 if ip_match:
                     device_ip = device.name
             
             if device_ip:
+                # Wzbogać danymi z API
                 enriched = self.external_apis.enrich_device(
                     device_ip=device_ip,
                     device_mac=device.mac_address
                 )
                 
-                # Add to metadata
+                # Dodaj do metadanych
                 if not device.metadata:
                     device.metadata = {}
                 
                 device.metadata['external_apis'] = enriched
                 
+                # Dodaj podatności jeśli wykryto coś podejrzanego
                 if enriched.get('virustotal'):
                     vt_data = enriched['virustotal']
                     if vt_data.get('malicious', 0) > 0:
-                        # Add detection details if available
+                        # Dodaj szczegóły detekcji jeśli dostępne
                         detections = vt_data.get('detections', [])
                         if detections:
-                            # Show first 3 engines that detected threat
+                            # Pokaż pierwsze 3 antywirusy które wykryły zagrożenie
                             engines = [d.get('engine', 'Unknown') for d in detections[:3]]
                             engines_str = ', '.join(engines)
                             if len(detections) > 3:
-                                engines_str += f" (+{len(detections) - 3} more)"
+                                engines_str += f" (+{len(detections) - 3} więcej)"
                             device.add_vulnerability(
-                                f"VirusTotal: IP flagged as malicious ({vt_data['malicious']} detections) – by: {engines_str}"
+                                f"VirusTotal: IP flagged as malicious ({vt_data['malicious']} detections) - wykryte przez: {engines_str}"
                             )
                         else:
                             device.add_vulnerability(
@@ -431,9 +530,9 @@ class MedicalDeviceScanner:
                             engines = [d.get('engine', 'Unknown') for d in detections[:3]]
                             engines_str = ', '.join(engines)
                             if len(detections) > 3:
-                                engines_str += f" (+{len(detections) - 3} more)"
+                                engines_str += f" (+{len(detections) - 3} więcej)"
                             device.add_vulnerability(
-                                f"VirusTotal: IP flagged as suspicious ({vt_data['suspicious']} detections) – by: {engines_str}"
+                                f"VirusTotal: IP flagged as suspicious ({vt_data['suspicious']} detections) - wykryte przez: {engines_str}"
                             )
                         else:
                             device.add_vulnerability(
@@ -449,20 +548,24 @@ class MedicalDeviceScanner:
                         )
         
         except Exception as e:
-            # Do not show errors - APIs are optional
+            # Nie wyświetlaj błędów - API są opcjonalne
             pass
     
     def _run_vulnerability_tests(self, device: Device):
         """
-        Run vulnerability tests and attack simulation on the device."""
+        Wykonuje testy podatności i symulację ataków na urządzeniu.
+        
+        Args:
+            device: Urządzenie do przetestowania
+        """
         if not self.vulnerability_tester:
             return
         
         try:
-            # Run vulnerability tests
+            # Wykonaj testy podatności
             test_results = self.vulnerability_tester.test_device(device)
             
-            # Store test results in device metadata
+            # Zapisz wyniki testów w metadanych urządzenia
             if test_results:
                 device.metadata["vulnerability_tests"] = [
                     {
@@ -476,45 +579,45 @@ class MedicalDeviceScanner:
                     for t in test_results
                 ]
                 
-                # From known vulnerabilities: which attacks the device is susceptible to
+                # Na podstawie znanych podatności: na jakie ataki urządzenie jest podatne
                 attack_susceptibility = self.vulnerability_tester.get_attack_susceptibility(device, test_results)
                 device.metadata["attack_susceptibility"] = attack_susceptibility
                 
-                # Add vulnerabilities to device list
+                # Dodaj podatności do listy urządzenia
                 for test in test_results:
                     if test.is_vulnerable:
                         device.add_vulnerability(f"{test.name}: {test.description}")
                 
-                # Recalculate security score with new vulnerabilities
+                # Przelicz security score z nowymi podatnościami
                 device.calculate_security_score()
         except Exception as e:
-            console.print(f"[yellow]⚠️  Vulnerability test error for {device.name}: {e}[/yellow]")
+            console.print(f"[yellow]⚠️  Błąd podczas testowania podatności dla {device.name}: {e}[/yellow]")
     
     def _detect_anomalies(self):
         """
-        Detect anomalies in devices using ML.
+        Wykrywa anomalie w urządzeniach używając Machine Learning.
         """
         if not self.anomaly_detector:
             return
         
         try:
-            console.print("[bold cyan]🤖 Detecting anomalies with ML...[/bold cyan]")
+            console.print("[bold cyan]🤖 Wykrywanie anomalii używając ML...[/bold cyan]")
             
-            # Train model if not yet trained (needs at least 2 devices)
+            # Trenuj model jeśli nie jest wytrenowany (działa od 2 urządzeń wzwyż)
             if not self.anomaly_detector.trained:
-                console.print("[dim]   Training ML model...[/dim]")
+                console.print("[dim]   Trenowanie modelu ML...[/dim]")
                 train_result = self.anomaly_detector.train(self.devices)
                 if not train_result.get('trained'):
-                    console.print(f"[dim]   ML model cannot be trained: {train_result.get('reason', 'Unknown')}[/dim]")
-                    console.print("[dim]   Using heuristics for anomaly detection...[/dim]")
+                    console.print(f"[dim]   Model ML nie może być wytrenowany: {train_result.get('reason', 'Unknown')}[/dim]")
+                    console.print("[dim]   Używam heurystyki do wykrywania anomalii...[/dim]")
             
-            # Detect anomalies
+            # Wykryj anomalie
             anomaly_results = self.anomaly_detector.detect_anomalies(self.devices, use_ensemble=True)
             
-            # Statistics
+            # Statystyki
             stats = self.anomaly_detector.get_anomaly_statistics(anomaly_results)
             
-            # Store results in device metadata
+            # Zapisz wyniki w metadanych urządzeń
             anomalies_found = 0
             for result in anomaly_results:
                 device = result['device']
@@ -531,70 +634,88 @@ class MedicalDeviceScanner:
                 
                 if result['is_anomaly']:
                     anomalies_found += 1
-                    # Add vulnerability if anomaly
+                    # Dodaj podatność jeśli anomalia
                     device.add_vulnerability(f"ML Anomaly Detection: {result['reason']}")
             
-            # Show detailed AI results
-            method_used = "Ensemble ML" if self.anomaly_detector.trained else "Heuristics"
+            # Wyświetl szczegółowe wyniki AI
+            method_used = "Ensemble ML" if self.anomaly_detector.trained else "Heurystyka"
             method_details = "Isolation Forest + LOF + One-Class SVM" if self.anomaly_detector.trained else "Security score + vulnerabilities"
             
-            console.print(f"\n[bold cyan]🤖 AI analysis results:[/bold cyan]")
-                    console.print(f"  📊 Analyzed: {len(self.devices)} devices")
-            console.print(f"  📈 Method: {method_used} ({method_details})")
+            console.print(f"\n[bold cyan]🤖 Wyniki analizy AI:[/bold cyan]")
+            console.print(f"  📊 Przeanalizowano: {len(self.devices)} urządzeń")
+            console.print(f"  📈 Metoda: {method_used} ({method_details})")
             
             if anomalies_found > 0:
-                console.print(f"\n  [yellow]⚠️  Detected {anomalies_found} anomalies ({stats['anomalies_percentage']:.1f}%)[/yellow]")
-                console.print(f"  [dim]   Avg anomaly score: {stats['avg_anomaly_score']:.2f}[/dim]")
+                console.print(f"\n  [yellow]⚠️  Wykryto {anomalies_found} anomalii ({stats['anomalies_percentage']:.1f}%)[/yellow]")
+                console.print(f"  [dim]   Średni anomaly score: {stats['avg_anomaly_score']:.2f}[/dim]")
                 
-                # Show anomaly details
-                console.print(f"\n  [bold yellow]🔍 Detected anomalies:[/bold yellow]")
+                # Pokaż szczegóły anomalii
+                console.print(f"\n  [bold yellow]🔍 Wykryte anomalie:[/bold yellow]")
                 for result in anomaly_results:
                     if result['is_anomaly']:
                         device = result['device']
                         console.print(f"    • [yellow]{device.name}[/yellow] (Score: {result['anomaly_score']:.2f})")
-                        console.print(f"      Method: {result['method']}")
-                        console.print(f"      Reason: {result['reason']}")
+                        console.print(f"      Metoda: {result['method']}")
+                        console.print(f"      Powód: {result['reason']}")
                         if result.get('scores'):
                             scores_str = ", ".join([f"{k}: {v:.2f}" for k, v in result['scores'].items()])
-                            console.print(f"      Details: {scores_str}")
+                            console.print(f"      Szczegóły: {scores_str}")
             else:
-                console.print(f"\n  [green]✅ No anomalies – all devices normal[/green]")
-                console.print(f"  [dim]   Avg anomaly score: {stats['avg_anomaly_score']:.2f}[/dim]")
+                console.print(f"\n  [green]✅ Nie wykryto anomalii - wszystkie urządzenia są normalne[/green]")
+                console.print(f"  [dim]   Średni anomaly score: {stats['avg_anomaly_score']:.2f}[/dim]")
             
-            console.print()  # Blank line
+            console.print()  # Pusta linia
             
         except Exception as e:
-            console.print(f"[yellow]⚠️  Anomaly detection error: {e}[/yellow]")
+            console.print(f"[yellow]⚠️  Błąd wykrywania anomalii: {e}[/yellow]")
     
     def _check_fda_compliance(self, device: Device):
         """
-        Check device compliance with FDA Cybersecurity Guidance (encryption, auth, updates, logging).
-        Only applied to medical devices to avoid false positives.
+        Sprawdza zgodność urządzenia z FDA Cybersecurity Guidance.
+        
+        FDA (Food and Drug Administration) to amerykańska agencja regulująca urządzenia medyczne.
+        FDA wymaga, aby urządzenia medyczne miały odpowiednie zabezpieczenia:
+        
+        Wymagania FDA:
+        - Szyfrowanie danych: Dane medyczne muszą być szyfrowane podczas transmisji
+        - Autoryzacja dostępu: Tylko autoryzowane urządzenia mogą się połączyć (parowanie)
+        - Aktualizacje bezpieczeństwa: Urządzenia muszą mieć możliwość aktualizacji firmware
+        - Logowanie zdarzeń: Logowanie prób dostępu i użycia urządzenia
+        
+        Jeśli urządzenie nie spełnia wymagań FDA, dodajemy podatność.
+        
+        UWAGA: Sprawdzamy TYLKO urządzenia medyczne - nie dodajemy false positives dla urządzeń domowych.
+        
+        Args:
+            device: Urządzenie do sprawdzenia
         """
-        # Check if this is actually a medical device
+        # Sprawdź czy to rzeczywiście urządzenie medyczne
         is_medical = self._is_medical_device(device)
         
         if not is_medical:
-            # Not a medical device – skip FDA check
-            device.metadata["fda_compliance"] = None  # N/A
+            # To nie jest urządzenie medyczne - nie sprawdzaj FDA
+            device.metadata["fda_compliance"] = None  # Nie dotyczy
             return
         
         compliance_issues = []
         
-        # Check encryption (FDA requires medical data encryption)
+        # Sprawdź szyfrowanie
+        # FDA wymaga szyfrowania danych medycznych
         if not device.has_encryption:
-            compliance_issues.append("FDA: No data encryption")
+            compliance_issues.append("FDA: Brak szyfrowania danych")
             device.add_vulnerability("FDA Non-compliance: Encryption")
         
-        # Check authorization (FDA requires access auth / pairing). For WiFi, network password counts.
+        # Sprawdź autoryzację
+        # FDA wymaga autoryzacji dostępu (parowanie)
+        # UWAGA: Dla WiFi hasło do sieci to już autoryzacja, więc nie sprawdzamy requires_pairing
         if device.protocol.value == "WIFI":
-            # WiFi requires network password – that counts as auth
+            # WiFi wymaga hasła do sieci - to jest autoryzacja
             pass
         elif not device.requires_pairing:
-            compliance_issues.append("FDA: No access authorization")
+            compliance_issues.append("FDA: Brak autoryzacji dostępu")
             device.add_vulnerability("FDA Non-compliance: Authentication")
         
-        # Store compliance result in device metadata
+        # Zapisz wynik zgodności w metadanych urządzenia
         if compliance_issues:
             device.metadata["fda_compliance"] = False
             device.metadata["fda_issues"] = compliance_issues
@@ -603,8 +724,15 @@ class MedicalDeviceScanner:
     
     def _is_medical_device(self, device: Device) -> bool:
         """
-        Return True if the device is considered medical."""
-        # Check device type
+        Sprawdza czy urządzenie jest rzeczywiście medyczne.
+        
+        Args:
+            device: Urządzenie do sprawdzenia
+        
+        Returns:
+            True jeśli urządzenie jest medyczne
+        """
+        # Sprawdź typ urządzenia
         medical_types = [
             DeviceType.GLUCOSE_METER,
             DeviceType.INSULIN_PUMP,
@@ -614,7 +742,7 @@ class MedicalDeviceScanner:
         if device.device_type in medical_types:
             return True
         
-        # Check device name
+        # Sprawdź nazwę urządzenia
         name_lower = device.name.lower()
         medical_keywords = [
             "medical", "med", "hospital", "clinic", "patient", "monitor",
@@ -624,51 +752,51 @@ class MedicalDeviceScanner:
         if any(keyword in name_lower for keyword in medical_keywords):
             return True
         
-        # Check medical ports in metadata
+        # Sprawdź porty medyczne w metadanych
         open_ports = device.metadata.get("open_ports", [])
         medical_ports = [104, 11112, 5000]
         if any(p in open_ports for p in medical_ports):
-            # If it has medical ports and few others, it may be a medical device
+            # Jeśli ma porty medyczne i mało innych portów, to może być urządzenie medyczne
             if len(open_ports) <= 5:
                 return True
         
         return False
     
     def display_results(self):
-        """Display scan results as device cards."""
+        """Wyświetla wyniki skanowania w formie kart urządzeń"""
         if not self.devices:
-            console.print("[red]❌ No devices found[/red]")
+            console.print("[red]❌ Nie znaleziono żadnych urządzeń[/red]")
             return
         
-        # Summary stats
+        # Podsumowanie statystyk
         total_devices = len(self.devices)
         high_risk = [d for d in self.devices if d.security_score < 50]
         medium_risk = [d for d in self.devices if 50 <= d.security_score < 80]
         low_risk = [d for d in self.devices if d.security_score >= 80]
         
-        # Show summary
+        # Wyświetl podsumowanie
         summary_panel = Panel.fit(
-            f"[bold]📊 Scan summary[/bold]\n\n"
-            f"Total devices: [bold cyan]{total_devices}[/bold cyan]\n"
-            f"🔴 High risk (score < 50): [bold red]{len(high_risk)}[/bold red]\n"
-            f"🟡 Medium risk (50-79): [bold yellow]{len(medium_risk)}[/bold yellow]\n"
-            f"🟢 Low risk (≥80): [bold green]{len(low_risk)}[/bold green]",
+            f"[bold]📊 Podsumowanie skanowania[/bold]\n\n"
+            f"Total urządzeń: [bold cyan]{total_devices}[/bold cyan]\n"
+            f"🔴 Wysokie ryzyko (score < 50): [bold red]{len(high_risk)}[/bold red]\n"
+            f"🟡 Średnie ryzyko (50-79): [bold yellow]{len(medium_risk)}[/bold yellow]\n"
+            f"🟢 Niskie ryzyko (≥80): [bold green]{len(low_risk)}[/bold green]",
             style="cyan",
-            title="📈 Stats"
+            title="📈 Statystyki"
         )
         console.print(summary_panel)
         console.print()
         
-        # Group devices by risk and protocol
+        # Grupuj urządzenia według ryzyka i protokołu
         risk_groups = [
-            ("🔴 HIGH RISK", high_risk, "red"),
-            ("🟡 MEDIUM RISK", medium_risk, "yellow"),
-            ("🟢 LOW RISK", low_risk, "green")
+            ("🔴 WYSOKIE RYZYKO", high_risk, "red"),
+            ("🟡 ŚREDNIE RYZYKO", medium_risk, "yellow"),
+            ("🟢 NISKIE RYZYKO", low_risk, "green")
         ]
         
         protocol_names = {
             "BLE": "📶 Bluetooth Low Energy",
-            "WiFi": "📡 WiFi (Local network)",
+            "WiFi": "📡 WiFi (Sieć lokalna)",
             "USB": "🔌 USB",
             "NFC": "📱 NFC"
         }
@@ -677,9 +805,9 @@ class MedicalDeviceScanner:
             if not devices_list:
                 continue
             
-            console.print(f"\n[bold {color}]{group_title}[/bold {color}] ({len(devices_list)} devices)\n")
+            console.print(f"\n[bold {color}]{group_title}[/bold {color}] ({len(devices_list)} urządzeń)\n")
             
-            # Group by protocol
+            # Grupuj według protokołu
             by_protocol = {}
             for device in devices_list:
                 protocol = device.protocol.value
@@ -687,28 +815,34 @@ class MedicalDeviceScanner:
                     by_protocol[protocol] = []
                 by_protocol[protocol].append(device)
             
-            # Show by protocol
+            # Wyświetl według protokołu
             for protocol in ["BLE", "WiFi", "USB", "NFC"]:
                 if protocol not in by_protocol:
                     continue
                 
                 protocol_devices = by_protocol[protocol]
                 protocol_label = protocol_names.get(protocol, protocol)
-                console.print(f"  [dim]{protocol_label}: {len(protocol_devices)} devices[/dim]\n")
+                console.print(f"  [dim]{protocol_label}: {len(protocol_devices)} urządzeń[/dim]\n")
                 
-                # Show each device as a card
+                # Wyświetl każde urządzenie jako kartę
                 for device in protocol_devices:
                     self._display_device_card(device, color)
                 
-                console.print()  # Blank line between protocols
+                console.print()  # Pusta linia między protokołami
         
-        # Show encryption analysis if available
+        # Wyświetl analizę szyfrowania jeśli dostępna
         if self.encryption_analyzer:
             self._display_encryption_analysis()
     
     def _display_device_card(self, device: Device, risk_color: str):
-        """Display a single device as a card. risk_color: red/yellow/green."""
-        # Style by risk
+        """
+        Wyświetla pojedyncze urządzenie jako kartę.
+        
+        Args:
+            device: Urządzenie do wyświetlenia
+            risk_color: Kolor ryzyka (red/yellow/green)
+        """
+        # Określ styl na podstawie ryzyka
         if device.security_score >= 80:
             panel_style = "green"
             risk_icon = "🟢"
@@ -719,26 +853,13 @@ class MedicalDeviceScanner:
             panel_style = "red"
             risk_icon = "🔴"
         
-        # Card header – improved name
-        device_display_name = device.name
-        if device.name == "Unknown" or device.name.startswith("Product-"):
-            # For USB devices with generic names, use a more descriptive name
-            if device.protocol.value == "USB":
-                if device.device_type.value == "USB_DEVICE":
-                    device_display_name = f"USB device ({device.mac_address[-5:]})"
-                else:
-                    device_display_name = f"{device.device_type.value.replace('_', ' ')} ({device.mac_address[-5:]})"
-            elif device.protocol.value == "BLE":
-                device_display_name = f"BLE device ({device.mac_address[-5:]})"
-            elif device.protocol.value == "WiFi":
-                device_display_name = f"WiFi device ({device.mac_address[-5:]})"
-            else:
-                device_display_name = f"{device.protocol.value} device ({device.mac_address[-5:]})"
+        # Header: use get_display_name() so BLE shows local_name / service type when name is generic
+        device_display_name = device.get_display_name()
         
-        # Card header
+        # Nagłówek karty
         header = f"{risk_icon} [bold]{device_display_name}[/bold]"
         if device.manufacturer and device.manufacturer != "N/A":
-            # Check if manufacturer is fake (for random MACs)
+            # Sprawdź czy producent nie jest fałszywy (dla losowych MAC)
             show_manufacturer = True
             if device.protocol.value == "BLE" and device.mac_address:
                 try:
@@ -749,7 +870,7 @@ class MedicalDeviceScanner:
                 except Exception:
                     pass
             
-            # For WiFi – do not show manufacturer if MAC is generated (00:00:xx)
+            # Dla WiFi - nie pokazuj producenta jeśli MAC jest wygenerowany (00:00:xx)
             if device.protocol.value == "WiFi" and device.mac_address.startswith("00:00:"):
                 show_manufacturer = False
             
@@ -767,49 +888,49 @@ class MedicalDeviceScanner:
             "NFC": "📱"
         }.get(device.protocol.value, "🌐")
         
-        info_lines.append(f"{protocol_emoji} Protocol: [bold cyan]{device.protocol.value}[/bold cyan]  |  Type: {device.device_type.value}")
+        info_lines.append(f"{protocol_emoji} Protokół: [bold cyan]{device.protocol.value}[/bold cyan]  |  Typ: {device.device_type.value}")
         info_lines.append(f"MAC: [yellow]{device.mac_address}[/yellow]")
         
-        # IP address (if available)
+        # IP address (jeśli dostępne)
         if device.metadata and device.metadata.get('ip_address'):
             info_lines.append(f"IP: [cyan]{device.metadata['ip_address']}[/cyan]")
         
-        # Encryption and authorization
-        encryption_status = "✅ Encryption: Yes" if device.has_encryption else "❌ Encryption: No"
-        pairing_status = "✅ Auth: Yes" if device.requires_pairing else "❌ Auth: No"
+        # Szyfrowanie i autoryzacja
+        encryption_status = "✅ Szyfrowanie: Tak" if device.has_encryption else "❌ Szyfrowanie: Nie"
+        pairing_status = "✅ Autoryzacja: Tak" if device.requires_pairing else "❌ Autoryzacja: Nie"
         
         if device.encryption_type:
             enc_type = device.encryption_type
-            # Truncate if too long
+            # Skróć jeśli zbyt długie
             if len(enc_type) > 30:
                 enc_type = enc_type[:27] + "..."
             encryption_status += f" ({enc_type})"
         
         info_lines.append(f"{encryption_status}  |  {pairing_status}")
         
-        # Vulnerabilities (deduplicate)
+        # Podatności (usuń duplikaty)
         unique_vulns = list(set(device.vulnerabilities)) if device.vulnerabilities else []
         vuln_count = len(unique_vulns)
         if vuln_count > 0:
-            vuln_text = f"⚠️  [bold red]{vuln_count} vulnerabilities[/bold red]"
+            vuln_text = f"⚠️  [bold red]{vuln_count} podatności[/bold red]"
             info_lines.append(vuln_text)
             
-            # Show first 3 unique vulnerabilities
+            # Pokaż pierwsze 3 unikalne podatności
             for vuln in unique_vulns[:3]:
                 info_lines.append(f"  • [red]{vuln}[/red]")
             if vuln_count > 3:
-                info_lines.append(f"  ... and {vuln_count - 3} more (see report)")
+                info_lines.append(f"  ... i {vuln_count - 3} więcej (zobacz raport)")
         else:
-            info_lines.append("[green]✅ No vulnerabilities detected[/green]")
+            info_lines.append("[green]✅ Brak wykrytych podatności[/green]")
         
-        # Attack susceptibility (from known vulnerabilities and ports)
+        # Podatność na ataki (na podstawie znanych podatności i portów)
         attack_sus = (device.metadata or {}).get("attack_susceptibility", [])
         if attack_sus:
             attack_types = list({a.get("attack_type", "") for a in attack_sus if a.get("attack_type")})
             if attack_types:
-                info_lines.append(f"[yellow]🎯 Attack susceptibility:[/yellow] {', '.join(attack_types[:5])}{'…' if len(attack_types) > 5 else ''}")
+                info_lines.append(f"[yellow]🎯 Podatność na ataki:[/yellow] {', '.join(attack_types[:5])}{'…' if len(attack_types) > 5 else ''}")
         
-        # Encryption analysis (if available)
+        # Analiza szyfrowania (jeśli dostępna)
         if device.metadata and "encryption_analysis" in device.metadata:
             enc_analysis = device.metadata["encryption_analysis"]
             strength = enc_analysis.get("strength", "unknown")
@@ -820,48 +941,48 @@ class MedicalDeviceScanner:
                     "weak": "🟠",
                     "none": "🔴"
                 }.get(strength, "⚪")
-                info_lines.append(f"{strength_emoji} Encryption: {strength.upper()} (Score: {enc_analysis.get('score', 0)}/100)")
+                info_lines.append(f"{strength_emoji} Szyfrowanie: {strength.upper()} (Score: {enc_analysis.get('score', 0)}/100)")
         
-        # FDA compliance (if applicable)
+        # FDA Compliance (jeśli dotyczy)
         if device.metadata and device.metadata.get("fda_compliance") is not None:
             if device.metadata["fda_compliance"]:
-                info_lines.append("[green]✅ FDA compliant[/green]")
+                info_lines.append("[green]✅ Zgodne z FDA[/green]")
             else:
-                info_lines.append("[red]❌ Not FDA compliant[/red]")
+                info_lines.append("[red]❌ Niezgodne z FDA[/red]")
                 if device.metadata.get("fda_issues"):
                     for issue in device.metadata["fda_issues"][:2]:
                         info_lines.append(f"  • [red]{issue}[/red]")
         
-        # Microcontroller messages (if available)
+        # Komunikaty z mikrokontrolera (jeśli dostępne)
         if device.metadata and device.metadata.get("microcontroller"):
             baudrate = device.metadata.get("baudrate", "N/A")
             messages = device.metadata.get("messages", [])
             message_count = device.metadata.get("message_count", 0)
             port = device.metadata.get('port', 'N/A')
             
-            info_lines.append(f"\n[cyan]🔧 Microcontroller (USB Serial)[/cyan]")
+            info_lines.append(f"\n[cyan]🔧 Mikrokontroler (USB Serial)[/cyan]")
             info_lines.append(f"  Port: {port}")
-            info_lines.append(f"  Speed: {baudrate} baud")
-            info_lines.append(f"  Status: {'✅ Active' if messages else '⚠️  No messages'}")
-            info_lines.append(f"  Messages: {message_count}")
+            info_lines.append(f"  Prędkość: {baudrate} baud")
+            info_lines.append(f"  Status: {'✅ Aktywny' if messages else '⚠️  Brak komunikatów'}")
+            info_lines.append(f"  Komunikaty: {message_count}")
             
             if messages:
-                info_lines.append(f"  [dim]Recent messages:[/dim]")
-                for msg in messages[:5]:  # Show first 5
-                    # Truncate long messages
+                info_lines.append(f"  [dim]Ostatnie komunikaty:[/dim]")
+                for msg in messages[:5]:  # Pokaż pierwsze 5
+                    # Skróć długie komunikaty
                     display_msg = msg[:70] + "..." if len(msg) > 70 else msg
-                    # Check if this is a response to test command
+                    # Sprawdź czy to odpowiedź na komendę testową
                     if "[TEST:" in msg:
                         info_lines.append(f"    [yellow]→ {display_msg}[/yellow]")
                     else:
                         info_lines.append(f"    [green]→ {display_msg}[/green]")
                 if len(messages) > 5:
-                    info_lines.append(f"    [dim]... and {len(messages) - 5} more[/dim]")
+                    info_lines.append(f"    [dim]... i {len(messages) - 5} więcej[/dim]")
             else:
-                info_lines.append(f"  [dim]💡 Microcontroller detected but not sending messages[/dim]")
-                info_lines.append(f"  [dim]   May need start command or is in sleep mode[/dim]")
+                info_lines.append(f"  [dim]💡 Mikrokontroler wykryty, ale nie wysyła komunikatów[/dim]")
+                info_lines.append(f"  [dim]   Może wymagać komendy startowej lub jest w trybie uśpienia[/dim]")
         
-        # Create panel
+        # Utwórz panel
         card_content = "\n".join(info_lines)
         panel = Panel(
             card_content,
@@ -873,7 +994,10 @@ class MedicalDeviceScanner:
     
     def _calculate_encryption_stats(self) -> Dict:
         """
-        Compute encryption stats for the report. Returns dict of encryption statistics.
+        Oblicza statystyki szyfrowania dla raportu.
+        
+        Returns:
+            Słownik ze statystykami szyfrowania
         """
         if not self.devices:
             return {}
@@ -904,11 +1028,11 @@ class MedicalDeviceScanner:
                 
                 total_encryption_score += enc_analysis.get('score', 0)
             else:
-                # If no analysis, fall back to has_encryption
+                # Jeśli brak analizy, sprawdź has_encryption
                 if not device.has_encryption:
                     none += 1
                 else:
-                    moderate += 1  # Default assumption
+                    moderate += 1  # Założenie domyślne
         
         return {
             "strong_encryption": strong,
@@ -921,12 +1045,12 @@ class MedicalDeviceScanner:
     
     def _display_encryption_analysis(self):
         """
-        Show a short summary of device encryption analysis.
+        Wyświetla krótkie podsumowanie analizy szyfrowania urządzeń.
         """
         if not self.devices:
             return
         
-        # Collect simple stats
+        # Zbierz proste statystyki
         total = len(self.devices)
         without_encryption = sum(1 for d in self.devices if not d.has_encryption)
         weak_count = 0
@@ -937,24 +1061,30 @@ class MedicalDeviceScanner:
                 if analysis.get("is_weak", False):
                     weak_count += 1
         
-        # Show short summary only if there are issues
+        # Wyświetl tylko krótkie podsumowanie jeśli są problemy
         if weak_count > 0 or without_encryption > 0:
-            console.print(f"[dim]🔐 Encryption: {without_encryption} without encryption, {weak_count} with weak encryption[/dim]")
+            console.print(f"[dim]🔐 Szyfrowanie: {without_encryption} bez szyfrowania, {weak_count} ze słabym szyfrowaniem[/dim]")
     
     def save_scan_results(self) -> str:
         """
-        Save raw scan data to a JSON file in the project root. Returns path or empty string on error.
+        Zapisuje surowe dane ze skanowania do pliku JSON w głównym katalogu projektu.
+        
+        Plik zawiera wszystkie wykryte urządzenia z pełnymi informacjami,
+        włącznie z metadanymi, podatnościami i wynikami analizy bezpieczeństwa.
+        
+        Returns:
+            Ścieżka do zapisanego pliku lub pusty string jeśli błąd
         """
         if not self.devices:
-            console.print("[yellow]⚠️  No devices to save[/yellow]")
+            console.print("[yellow]⚠️  Brak urządzeń do zapisania[/yellow]")
             return ""
         
-        # Create filename with timestamp
+        # Utwórz nazwę pliku z timestampem
         timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         filename = f"scan_{timestamp}.json"
         filepath = self.scans_dir / filename
         
-        # Prepare data to save
+        # Przygotuj dane do zapisania
         scan_data = {
             "scan_timestamp": datetime.now().isoformat(),
             "total_devices": len(self.devices),
@@ -962,34 +1092,37 @@ class MedicalDeviceScanner:
             "devices": [device.to_dict() for device in self.devices]
         }
         
-        # Write to JSON file
+        # Zapisz do pliku JSON
         try:
-            # Convert all values to JSON-serializable
+            # Konwertuj wszystkie wartości na serializowalne do JSON
             scan_data_serializable = make_json_serializable(scan_data)
             with open(filepath, 'w', encoding='utf-8') as f:
                 json.dump(scan_data_serializable, f, indent=2, ensure_ascii=False)
             
-            console.print(f"[green]✅ Scan results saved: {filepath}[/green]")
+            console.print(f"[green]✅ Zapisano wyniki skanowania: {filepath}[/green]")
             return str(filepath)
         except Exception as e:
-            console.print(f"[red]❌ Error saving results: {e}[/red]")
+            console.print(f"[red]❌ Błąd zapisywania wyników: {e}[/red]")
             return ""
     
     def generate_report(self) -> dict:
         """
-        Generate security analysis report and save to data/reports/. Creates reports in formats:
-        - JSON: Structured data for further analysis
+        Generuje raport z analizy bezpieczeństwa i zapisuje do data/reports/.
         
-        Returns dict of paths {'json': path}.
+        Tworzy raporty w formatach:
+        - JSON: Dane strukturalne do dalszej analizy
+        
+        Returns:
+            Słownik ze ścieżkami do wygenerowanych raportów {'json': path}
         """
         if not self.devices:
-            console.print("[yellow]⚠️  No devices to report[/yellow]")
+            console.print("[yellow]⚠️  Brak urządzeń do raportowania[/yellow]")
             return {}
         
         timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         report_paths = {}
         
-        # Generate JSON report
+        # Generuj raport JSON
         json_path = self._generate_json_report(timestamp)
         if json_path:
             report_paths['json'] = json_path
@@ -998,16 +1131,25 @@ class MedicalDeviceScanner:
     
     def export_to_csv(self, output_path: Optional[str] = None) -> str:
         """
-        Export scan results to CSV file.
+        Eksportuje wyniki skanowania do pliku CSV.
         
-        CSV with key device info: name, MAC, type, protocol, security, vulnerabilities (semicolon-separated), metadata.
-        output_path: optional; if None uses project root. Returns path or empty string on error.
+        CSV zawiera wszystkie urządzenia z kluczowymi informacjami:
+        - Podstawowe dane (nazwa, MAC, typ, protokół)
+        - Informacje o bezpieczeństwie (score, szyfrowanie, autoryzacja)
+        - Lista podatności (oddzielone średnikami)
+        - Metadane (producent, model, firmware)
+        
+        Args:
+            output_path: Opcjonalna ścieżka do pliku CSV. Jeśli None, używa głównego katalogu projektu
+        
+        Returns:
+            Ścieżka do zapisanego pliku CSV lub pusty string jeśli błąd
         """
         if not self.devices:
-            console.print("[yellow]⚠️  No devices to export[/yellow]")
+            console.print("[yellow]⚠️  Brak urządzeń do eksportu[/yellow]")
             return ""
         
-        # Create filename with timestamp
+        # Utwórz nazwę pliku z timestampem
         timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         
         if output_path:
@@ -1083,20 +1225,26 @@ class MedicalDeviceScanner:
                     
                     writer.writerow(row)
             
-            # Do not show message – will be shown in main()
+            # Nie wyświetlaj komunikatu - będzie wyświetlony w main()
             return str(filepath)
         except Exception as e:
-            console.print(f"[red]❌ CSV export error: {e}[/red]")
+            console.print(f"[red]❌ Błąd eksportu do CSV: {e}[/red]")
             return ""
     
     def _generate_json_report(self, timestamp: str) -> str:
         """
-        Generate JSON security report. timestamp: used in filename. Returns path or empty string on error.
+        Generuje raport JSON z analizą bezpieczeństwa.
+        
+        Args:
+            timestamp: Timestamp używany w nazwie pliku
+        
+        Returns:
+            Ścieżka do zapisanego pliku lub pusty string jeśli błąd
         """
         filename = f"report_{timestamp}.json"
         filepath = self.reports_dir / filename
         
-        # Prepare report data
+        # Przygotuj dane raportu
         total_devices = len(self.devices)
         high_risk = [d for d in self.devices if d.security_score < 50]
         medium_risk = [d for d in self.devices if 50 <= d.security_score < 80]
@@ -1106,7 +1254,7 @@ class MedicalDeviceScanner:
         devices_without_pairing = [d for d in self.devices if not d.requires_pairing]
         fda_non_compliant = [d for d in self.devices if not d.metadata.get("fda_compliance", True)]
         
-        # Calculate encryption stats
+        # Oblicz statystyki szyfrowania
         encryption_stats = self._calculate_encryption_stats()
         
         report_data = {
@@ -1136,35 +1284,39 @@ class MedicalDeviceScanner:
         }
         
         try:
-            # Convert all values to JSON-serializable
+            # Konwertuj wszystkie wartości na serializowalne do JSON
             report_data_serializable = make_json_serializable(report_data)
             with open(filepath, 'w', encoding='utf-8') as f:
                 json.dump(report_data_serializable, f, indent=2, ensure_ascii=False)
             
-            console.print(f"[green]✅ Generated JSON report: {filepath}[/green]")
+            console.print(f"[green]✅ Wygenerowano raport JSON: {filepath}[/green]")
             return str(filepath)
         except Exception as e:
-            console.print(f"[red]❌ Error generating JSON report: {e}[/red]")
+            console.print(f"[red]❌ Błąd generowania raportu JSON: {e}[/red]")
             return ""
     
     def generate_combined_report(self, threat_intel_data: Optional[Dict[str, Any]] = None) -> str:
         """
-        Generate one combined JSON file with: scan data, security report, threat intelligence (if available),
+        Generuje jeden kompleksowy plik JSON łączący wszystkie dane:
+        - Surowe dane ze skanowania (scan)
+        - Analiza bezpieczeństwa (report)
+        - Threat intelligence (jeśli dostępne)
         
         Args:
-            threat_intel_data: Threat intelligence data (optional)
+            threat_intel_data: Dane threat intelligence (opcjonalne)
         
-        Returns path or empty string on error.
+        Returns:
+            Ścieżka do zapisanego pliku lub pusty string jeśli błąd
         """
         if not self.devices:
-            console.print("[yellow]⚠️  No devices to report[/yellow]")
+            console.print("[yellow]⚠️  Brak urządzeń do raportowania[/yellow]")
             return ""
         
         timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         filename = f"combined_report_{timestamp}.json"
         filepath = self.reports_dir / filename
         
-        # Prepare raw scan data
+        # Przygotuj dane ze skanowania (surowe)
         scan_data = {
             "scan_timestamp": datetime.now().isoformat(),
             "total_devices": len(self.devices),
@@ -1172,7 +1324,7 @@ class MedicalDeviceScanner:
             "devices": [device.to_dict() for device in self.devices]
         }
         
-        # Prepare security analysis (report) data
+        # Przygotuj dane z analizy bezpieczeństwa (report)
         total_devices = len(self.devices)
         high_risk = [d for d in self.devices if d.security_score < 50]
         medium_risk = [d for d in self.devices if 50 <= d.security_score < 80]
@@ -1208,17 +1360,18 @@ class MedicalDeviceScanner:
             }
         }
         
-        # Link threat intelligence to devices
+        # Powiąż threat intelligence z urządzeniami
+        # Dodaj informacje o threat intelligence do każdego urządzenia
         devices_with_threat_intel = []
         for device in self.devices:
             device_dict = device.to_dict()
             
-            # Find threat intelligence for this device
+            # Znajdź threat intelligence dla tego urządzenia
             device_ip = device_dict.get('ip_address') or device.metadata.get('ip_address') or device.metadata.get('ip')
             if device_ip and threat_intel_data:
                 threat_info = threat_intel_data.get(device_ip)
                 if threat_info:
-                    # Add threat intelligence to device
+                    # Dodaj threat intelligence bezpośrednio do urządzenia
                     device_dict['threat_intelligence'] = threat_info
                     device_dict['threat_intelligence_linked'] = True
                 else:
@@ -1228,10 +1381,10 @@ class MedicalDeviceScanner:
             
             devices_with_threat_intel.append(device_dict)
         
-        # Update scan_data with devices that have threat intelligence
+        # Zaktualizuj scan_data z urządzeniami zawierającymi threat intelligence
         scan_data["devices"] = devices_with_threat_intel
         
-        # Merge all data into one file
+        # Połącz wszystkie dane w jeden plik
         combined_data = {
             "report_timestamp": datetime.now().isoformat(),
             "scan": scan_data,
@@ -1239,10 +1392,10 @@ class MedicalDeviceScanner:
             "threat_intelligence": threat_intel_data if threat_intel_data else {}
         }
         
-        # Add threat intelligence info
+        # Dodaj informację o threat intelligence
         if threat_intel_data:
             threats_found = sum(1 for r in threat_intel_data.values() if r.get('is_threat', False))
-            # Add IP -> devices mapping for easy lookup
+            # Dodaj mapowanie IP -> urządzenia dla łatwego wyszukiwania
             ip_to_devices = {}
             for device in devices_with_threat_intel:
                 device_ip = device.get('ip_address')
@@ -1260,7 +1413,7 @@ class MedicalDeviceScanner:
                 "total_ips_checked": len(threat_intel_data),
                 "threats_found": threats_found,
                 "clean_ips": len(threat_intel_data) - threats_found,
-                "ip_to_devices": ip_to_devices  # IP -> devices mapping
+                "ip_to_devices": ip_to_devices  # Mapowanie IP -> urządzenia
             }
         else:
             combined_data["threat_intelligence_summary"] = {
@@ -1271,25 +1424,34 @@ class MedicalDeviceScanner:
             }
         
         try:
-            # Convert all values to JSON-serializable
+            # Konwertuj wszystkie wartości na serializowalne do JSON
             combined_data_serializable = make_json_serializable(combined_data)
             with open(filepath, 'w', encoding='utf-8') as f:
                 json.dump(combined_data_serializable, f, indent=2, ensure_ascii=False)
             
-            console.print(f"[green]✅ Generated combined report: {filepath}[/green]")
-            console.print(f"[dim]   Contains: scan + analysis + threat intelligence[/dim]")
+            console.print(f"[green]✅ Wygenerowano kompleksowy raport: {filepath}[/green]")
+            console.print(f"[dim]   Zawiera: skanowanie + analiza + threat intelligence[/dim]")
             return str(filepath)
         except Exception as e:
-            console.print(f"[red]❌ Error generating combined report: {e}[/red]")
+            console.print(f"[red]❌ Błąd generowania kompleksowego raportu: {e}[/red]")
             return ""
     
     def export_to_pdf(self, output_path: Optional[str] = None) -> str:
         """
-        Export scan results to PDF file.
+        Eksportuje wyniki skanowania do pliku PDF.
         
-        Professional layout with header, device table, vulnerabilities, FDA compliance.
-        Professional layout with header, device table, vulnerabilities per device, FDA compliance.
-        output_path: optional; if None uses project root. Returns path or empty string on error.
+        PDF zawiera:
+        - Profesjonalny layout z nagłówkiem
+        - Podsumowanie statystyk
+        - Tabelę wszystkich urządzeń
+        - Listę podatności dla każdego urządzenia
+        - Informacje o zgodności z FDA
+        
+        Args:
+            output_path: Opcjonalna ścieżka do pliku PDF. Jeśli None, używa głównego katalogu projektu
+        
+        Returns:
+            Ścieżka do zapisanego pliku PDF lub pusty string jeśli błąd
         """
         try:
             from reportlab.lib import colors
@@ -1299,15 +1461,15 @@ class MedicalDeviceScanner:
             from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, PageBreak
             from reportlab.lib.enums import TA_CENTER, TA_LEFT
         except ImportError:
-            console.print("[yellow]⚠️  'reportlab' is not installed.[/yellow]")
-            console.print("   Install: pip install reportlab")
+            console.print("[yellow]⚠️  Biblioteka 'reportlab' nie jest zainstalowana.[/yellow]")
+            console.print("   Zainstaluj: pip install reportlab")
             return ""
         
         if not self.devices:
-            console.print("[yellow]⚠️  No devices to export[/yellow]")
+            console.print("[yellow]⚠️  Brak urządzeń do eksportu[/yellow]")
             return ""
         
-        # Create filename with timestamp
+        # Utwórz nazwę pliku z timestampem
         timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         
         if output_path:
@@ -1317,7 +1479,7 @@ class MedicalDeviceScanner:
             filepath = self.reports_dir / filename
         
         try:
-            # Create PDF document
+            # Utwórz dokument PDF
             doc = SimpleDocTemplate(str(filepath), pagesize=A4)
             story = []
             
@@ -1388,7 +1550,7 @@ class MedicalDeviceScanner:
                 pairing = '✅' if device.requires_pairing else '❌'
                 vuln_count = len(device.vulnerabilities)
                 
-                # Truncate name if too long
+                # Skróć nazwę jeśli zbyt długa
                 name = device.name[:30] + '...' if len(device.name) > 30 else device.name
                 mac = device.mac_address[:12] + '...' if len(device.mac_address) > 12 else device.mac_address
                 
@@ -1402,20 +1564,20 @@ class MedicalDeviceScanner:
                     str(vuln_count)
                 ])
             
-            # Create table (max 20 rows per page)
+            # Utwórz tabelę (maksymalnie 20 wierszy na stronę)
             max_rows_per_page = 20
             for i in range(0, len(device_data), max_rows_per_page):
                 page_data = device_data[i:i+max_rows_per_page]
                 if i > 0:
-                    page_data = [device_data[0]] + page_data  # Add header
+                    page_data = [device_data[0]] + page_data  # Dodaj nagłówek
                 
                 device_table = Table(page_data, colWidths=[1.5*inch, 1.2*inch, 1*inch, 0.8*inch, 0.6*inch, 0.8*inch, 0.7*inch])
                 device_table.setStyle(TableStyle([
                     ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#0066CC')),
                     ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
                     ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-                    ('ALIGN', (3, 1), (3, -1), 'CENTER'),  # Score centered
-                    ('ALIGN', (4, 1), (6, -1), 'CENTER'),  # Icons centered
+                    ('ALIGN', (3, 1), (3, -1), 'CENTER'),  # Score wyśrodkowany
+                    ('ALIGN', (4, 1), (6, -1), 'CENTER'),  # Ikony wyśrodkowane
                     ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
                     ('FONTSIZE', (0, 0), (-1, 0), 10),
                     ('FONTSIZE', (0, 1), (-1, -1), 8),
@@ -1451,20 +1613,20 @@ class MedicalDeviceScanner:
             # Zbuduj PDF
             doc.build(story)
             
-            # Do not show message – will be shown in main()
+            # Nie wyświetlaj komunikatu - będzie wyświetlony w main()
             return str(filepath)
         except Exception as e:
-            console.print(f"[red]❌ PDF export error: {e}[/red]")
+            console.print(f"[red]❌ Błąd eksportu do PDF: {e}[/red]")
             import traceback
             console.print(f"[dim]{traceback.format_exc()}[/dim]")
             return ""
     
     def get_devices_by_risk(self) -> dict:
         """
-        Group devices by risk level.
+        Grupuje urządzenia według poziomu ryzyka.
         
         Returns:
-            Dict of devices grouped by risk
+            Słownik z urządzeniami pogrupowanymi według ryzyka
         """
         high_risk = [d for d in self.devices if d.security_score < 50]
         medium_risk = [d for d in self.devices if 50 <= d.security_score < 80]
@@ -1478,14 +1640,90 @@ class MedicalDeviceScanner:
 
 
 def _export_to_siem_jsonl(devices: List[Device], output_file: str, timestamp: str) -> str:
-    """Export devices to SIEM as JSON Lines. Returns path to generated file."""
-    # Save in exports/ directory
+    """
+    Eksportuje urządzenia do SIEM w formacie JSON Lines (wbudowane w scanner.py).
+    
+    Args:
+        devices: Lista urządzeń
+        output_file: Nazwa pliku wyjściowego (bez ścieżki)
+        timestamp: Timestamp skanowania
+    
+    Returns:
+        Ścieżka do wygenerowanego pliku
+    """
+    # Zapisz w katalogu exports/
     project_root = Path(__file__).parent.parent
     exports_dir = project_root / "exports"
     exports_dir.mkdir(exist_ok=True)
     output_path = exports_dir / output_file
     lines = []
     for device in devices:
+        device_dict = device.to_dict()
+        metadata = device_dict.get('metadata', {}) if isinstance(device_dict.get('metadata', {}), dict) else {}
+        mac_address = device.mac_address if device.mac_address and device.mac_address != "--" else None
+        ip_address = device.metadata.get('ip_address') or device.metadata.get('ip')
+        readable_name = (device_dict.get('label') or device_dict.get('display_name') or device.name or "").strip()
+        protocol_value = device.protocol.value
+        manufacturer = (device.manufacturer or "").strip() or None
+        open_ports = device.metadata.get('open_ports', [])
+        identification_quality = device_dict.get('identification_quality')
+        if manufacturer and identification_quality == 'medium':
+            identification_basis = 'manufacturer_only'
+        elif metadata.get('local_name') or metadata.get('gatt_device_name'):
+            identification_basis = 'device_advertised_name'
+        elif manufacturer and device.model:
+            identification_basis = 'manufacturer_and_model'
+        elif ip_address and not manufacturer:
+            identification_basis = 'ip_only'
+        else:
+            identification_basis = 'generic_fallback'
+        device_identity = f"{protocol_value}:{mac_address or ip_address or readable_name}"
+        # Group potentially same physical devices in SIEM (helpful for BLE MAC randomization).
+        if protocol_value == 'BLE':
+            local_name = str(metadata.get('local_name') or metadata.get('gatt_device_name') or '').strip().lower()
+            services = metadata.get('service_names') or []
+            service_sig = ",".join(sorted(str(s).strip().lower() for s in services[:5] if str(s).strip()))
+            if local_name:
+                group_key = f"ble:name:{local_name}"
+            elif manufacturer and service_sig:
+                group_key = f"ble:vendor_service:{manufacturer.lower()}|{service_sig}"
+            elif manufacturer:
+                group_key = f"ble:vendor:{manufacturer.lower()}"
+            else:
+                group_key = f"ble:identity:{(mac_address or readable_name).lower()}"
+        elif protocol_value == 'WiFi':
+            group_key = f"wifi:{(ip_address or mac_address or readable_name).lower()}"
+        else:
+            group_key = f"{protocol_value.lower()}:{(mac_address or ip_address or readable_name).lower()}"
+
+        # Readability score for SIEM filtering/quality dashboards.
+        readability_score = 20
+        if readable_name and readable_name not in ("Unknown", "Unknown Device"):
+            readability_score += 30
+        if manufacturer:
+            readability_score += 20
+        if mac_address:
+            readability_score += 10
+        if ip_address:
+            readability_score += 10
+        if identification_quality == 'high':
+            readability_score += 10
+        elif identification_quality == 'medium':
+            readability_score += 5
+        readability_score = max(0, min(100, readability_score))
+
+        searchable_text = " | ".join(
+            s for s in [
+                readable_name,
+                manufacturer or "",
+                protocol_value,
+                device.device_type.value,
+                ip_address or "",
+                mac_address or "",
+                identification_quality or "",
+                identification_basis,
+            ] if s
+        )
         event = {
             '@timestamp': timestamp,
             'event': {
@@ -1495,19 +1733,33 @@ def _export_to_siem_jsonl(devices: List[Device], output_file: str, timestamp: st
                 'severity': 'Low' if device.security_score >= 80 else 'Medium' if device.security_score >= 50 else 'High' if device.security_score >= 30 else 'Critical'
             },
             'device': {
-                'name': device.name,
-                'mac_address': device.mac_address,
-                'ip_address': device.metadata.get('ip_address'),
+                # Prefer human-readable name for SIEM dashboards (Splunk/ELK)
+                'name': readable_name,
+                'raw_name': device.name,
+                'display_name': device_dict.get('display_name'),
+                'identity': device_identity,
+                'group_key': group_key,
+                'ip_or_mac': ip_address or mac_address,
+                'mac_address': mac_address,
+                'ip_address': ip_address,
                 'type': device.device_type.value,
-                'protocol': device.protocol.value,
-                'manufacturer': device.manufacturer,
+                'protocol': protocol_value,
+                'manufacturer': manufacturer,
+                'manufacturer_source': metadata.get('manufacturer_source', 'unknown'),
+                'manufacturer_from_adv': metadata.get('manufacturer_from_adv'),
+                'identification_quality': identification_quality,
+                'identification_basis': identification_basis,
+                'readability_score': readability_score,
                 'security_score': device.security_score,
                 'has_encryption': device.has_encryption,
                 'encryption_type': device.encryption_type,
                 'requires_pairing': device.requires_pairing,
                 'vulnerabilities': device.vulnerabilities,
                 'vulnerability_count': len(device.vulnerabilities),
-                'open_ports': device.metadata.get('open_ports', [])
+                'open_ports': open_ports,
+                'open_port_count': len(open_ports),
+                'is_anomaly': bool(metadata.get('anomaly_detection', {}).get('is_anomaly')),
+                'searchable_text': searchable_text,
             },
             'scan': {
                 'timestamp': timestamp,
@@ -1522,15 +1774,23 @@ def _export_to_siem_jsonl(devices: List[Device], output_file: str, timestamp: st
 
 
 def _check_threat_intelligence(devices: List[Device]) -> Dict[str, Any]:
-    """Check threat intelligence for devices. Returns dict of results."""
+    """
+    Sprawdza threat intelligence dla urządzeń (wbudowane w scanner.py).
+    
+    Args:
+        devices: Lista urządzeń
+    
+    Returns:
+        Słownik z wynikami threat intelligence
+    """
     results = {}
     
-    # Check if AbuseIPDB API key is available
+    # Sprawdź czy AbuseIPDB API key jest dostępny
     abuseipdb_key = os.getenv("ABUSEIPDB_API_KEY")
     if not abuseipdb_key:
-        return results  # No key – skip
+        return results  # Brak klucza - pomiń
     
-    # Collect unique IPs
+    # Zbierz unikalne IP
     ips_to_check = set()
     for device in devices:
         ip = device.metadata.get('ip_address')
@@ -1540,7 +1800,7 @@ def _check_threat_intelligence(devices: List[Device]) -> Dict[str, Any]:
     if not ips_to_check:
         return results
     
-    # Check AbuseIPDB (with rate limiting)
+    # Sprawdź AbuseIPDB (z rate limiting)
     try:
         import requests
         import time
@@ -1570,14 +1830,14 @@ def _check_threat_intelligence(devices: List[Device]) -> Dict[str, Any]:
                 pass
             return (ip, {'ip': ip, 'is_threat': False, 'error': 'check_failed'})
         
-        # Check in parallel (max 3 at a time for rate limiting)
+        # Sprawdź równolegle (max 3 jednocześnie dla rate limiting)
         with ThreadPoolExecutor(max_workers=3) as executor:
             futures = {executor.submit(check_ip, ip): ip for ip in ips_to_check}
             for future in as_completed(futures):
                 ip, result = future.result()
                 results[ip] = result
     except ImportError:
-        pass  # requests not available
+        pass  # requests nie dostępne
     except Exception:
         pass
     
@@ -1588,7 +1848,7 @@ def _check_threat_intelligence(devices: List[Device]) -> Dict[str, Any]:
 
 
 def _send_report_email(to_addr: str, filepath: str) -> None:
-    """Send report (combined_report JSON) by email. SMTP from .env (like ESP32)."""
+    """Wysyła raport (combined_report JSON) emailem. SMTP z .env (jak ESP32)."""
     try:
         import smtplib
         from email.mime.text import MIMEText
@@ -1596,7 +1856,7 @@ def _send_report_email(to_addr: str, filepath: str) -> None:
         from email.mime.base import MIMEBase
         from email import encoders
     except ImportError:
-        console.print("[yellow]⚠️  No email/smtplib – skipping report email.[/yellow]")
+        console.print("[yellow]⚠️  Brak modułu email/smtplib – pomijam wysyłkę raportu.[/yellow]")
         return
     smtp_server = os.getenv("SMTP_SERVER") or os.getenv("SMTP_HOST")
     smtp_port = int(os.getenv("SMTP_PORT", "587"))
@@ -1604,22 +1864,22 @@ def _send_report_email(to_addr: str, filepath: str) -> None:
     password = os.getenv("SMTP_PASSWORD")
     from_addr = os.getenv("EMAIL_FROM") or user
     if not smtp_server or not user or not password or not to_addr:
-        console.print("[yellow]⚠️  Missing SMTP_SERVER/SMTP_USER/SMTP_PASSWORD or address. Check .env[/yellow]")
+        console.print("[yellow]⚠️  Brak SMTP_SERVER/SMTP_USER/SMTP_PASSWORD lub adresu. Sprawdź .env[/yellow]")
         return
     if not filepath or not os.path.isfile(filepath):
-        console.print("[yellow]⚠️  No report file to send.[/yellow]")
+        console.print("[yellow]⚠️  Brak pliku raportu do wysłania.[/yellow]")
         return
     try:
         with open(filepath, "r", encoding="utf-8") as f:
             body_json = f.read()
     except Exception as e:
-        console.print(f"[red]❌ Cannot read report: {e}[/red]")
+        console.print(f"[red]❌ Nie można odczytać raportu: {e}[/red]")
         return
     msg = MIMEMultipart()
-    msg["Subject"] = f"[Scanner] Audit report {os.path.basename(filepath)}"
+    msg["Subject"] = f"[Scanner] Raport audytu {os.path.basename(filepath)}"
     msg["From"] = from_addr
     msg["To"] = to_addr
-    summary = f"Scan/audit report attached: {os.path.basename(filepath)}\n\nSMTP config as for ESP32 (Proton etc.): docs/CRON_PROTON_ESP32.md"
+    summary = f"Raport skanowania/audytu załączony: {os.path.basename(filepath)}\n\nKonfiguracja SMTP jak dla ESP32 (Proton itd.): docs/CRON_PROTON_ESP32.md"
     msg.attach(MIMEText(summary, "plain", "utf-8"))
     part = MIMEBase("application", "json")
     part.set_payload(body_json.encode("utf-8"))
@@ -1631,46 +1891,46 @@ def _send_report_email(to_addr: str, filepath: str) -> None:
             server.starttls()
             server.login(user, password)
             server.sendmail(from_addr, to_addr, msg.as_string())
-        console.print(f"[green]✅ Report sent by email to {to_addr}[/green]")
+        console.print(f"[green]✅ Raport wysłany emailem na {to_addr}[/green]")
     except Exception as e:
-        console.print(f"[red]❌ SMTP error (check .env, Proton token, network): {e}[/red]")
+        console.print(f"[red]❌ Błąd SMTP (sprawdź .env, token Proton, sieć): {e}[/red]")
 
 
 def main():
-    """Main entry point."""
+    """Główna funkcja - punkt wejścia programu"""
     import argparse
     
     parser = argparse.ArgumentParser(description='Medical Device Security Scanner')
-    parser.add_argument('--ble', action='store_true', help='Scan BLE only')
-    parser.add_argument('--wifi', action='store_true', help='Scan WiFi only')
-    parser.add_argument('--usb', action='store_true', help='Scan USB only')
-    parser.add_argument('--nfc', action='store_true', help='Scan NFC only')
-    parser.add_argument('--audit', action='store_true', help='Full security audit (vulnerability tests)')
-    parser.add_argument('--api', action='store_true', help='Start API server after scan')
-    parser.add_argument('--api-port', type=int, default=5000, help='Port for API server (default 5000)')
-    parser.add_argument('--no-wifi', action='store_true', help='Skip WiFi scan (only directly connected devices)')
-    parser.add_argument('--no-siem', action='store_true', help='Disable automatic SIEM export (enabled by default)')
-    parser.add_argument('--no-threat-intel', action='store_true', help='Disable automatic threat intelligence (enabled by default)')
-    parser.add_argument('--legacy-reports', action='store_true', help='Also create legacy files (scan_*.json, report_*.json); default is combined_report_*.json only')
+    parser.add_argument('--ble', action='store_true', help='Skanuj tylko BLE')
+    parser.add_argument('--wifi', action='store_true', help='Skanuj tylko WiFi')
+    parser.add_argument('--usb', action='store_true', help='Skanuj tylko USB')
+    parser.add_argument('--nfc', action='store_true', help='Skanuj tylko NFC')
+    parser.add_argument('--audit', action='store_true', help='Pełny audyt bezpieczeństwa (testy podatności)')
+    parser.add_argument('--api', action='store_true', help='Uruchom API server po skanowaniu')
+    parser.add_argument('--api-port', type=int, default=5000, help='Port dla API server (domyślnie 5000)')
+    parser.add_argument('--no-wifi', action='store_true', help='Pomiń skanowanie WiFi (tylko urządzenia bezpośrednio podłączone)')
+    parser.add_argument('--no-siem', action='store_true', help='Wyłącz automatyczny eksport do SIEM (domyślnie włączony)')
+    parser.add_argument('--no-threat-intel', action='store_true', help='Wyłącz automatyczne sprawdzanie threat intelligence (domyślnie włączone)')
+    parser.add_argument('--legacy-reports', action='store_true', help='Twórz również stare pliki (scan_*.json, report_*.json) - domyślnie tylko combined_report_*.json')
     
-    # New features
-    parser.add_argument('--schedule', type=str, help='Schedule scans (e.g. "daily 09:00", "hourly", "every 30 minutes")')
-    parser.add_argument('--monitor', action='store_true', help='Run real-time monitoring')
-    parser.add_argument('--interval', type=int, default=300, help='Monitoring interval in seconds (default 300 = 5 min)')
-    parser.add_argument('--report-email', metavar='ADR', default=None, help='After scan, send combined_report by email (SMTP from .env, like ESP32)')
-    parser.add_argument('--ble-duration', type=int, default=20, metavar='SEC', help='BLE scan duration in seconds (default 20; higher = more chance to detect slow advertisers)')
+    # Nowe funkcjonalności
+    parser.add_argument('--schedule', type=str, help='Zaplanuj skanowanie (np. "daily 09:00", "hourly", "every 30 minutes")')
+    parser.add_argument('--monitor', action='store_true', help='Uruchom monitoring w czasie rzeczywistym')
+    parser.add_argument('--interval', type=int, default=300, help='Interwał monitoringu w sekundach (domyślnie 300 = 5 minut)')
+    parser.add_argument('--report-email', metavar='ADR', default=None, help='Po zakończeniu skanowania wyślij raport (combined_report) emailem (SMTP z .env, jak ESP32)')
+    parser.add_argument('--ble-duration', type=int, default=25, metavar='SEC', help='Czas skanowania BLE w sekundach (domyślnie 25; 30–40 = maksymalna dokładność)')
     
 
     args = parser.parse_args()
     
     console.print(Panel.fit(
         "[bold cyan]🏥 Medical Device Security Scanner[/bold cyan]\n"
-        "[dim]IoT medical device security audit tool[/dim]",
+        "[dim]Narzędzie do audytu bezpieczeństwa urządzeń medycznych IoT[/dim]",
         style="cyan"
     ))
     console.print()
     
-    # Choose protocols to scan
+    # Określ protokoły do skanowania
     protocols = []
     if args.ble:
         protocols.append('ble')
@@ -1681,7 +1941,7 @@ def main():
     if args.nfc:
         protocols.append('nfc')
     
-    # If no protocol selected, scan all (except WiFi if --no-wifi)
+    # Jeśli nie wybrano żadnego protokołu, skanuj wszystkie (oprócz WiFi jeśli --no-wifi)
     if not protocols:
         protocols = ['ble', 'usb', 'nfc']
         if not args.no_wifi:
@@ -1689,30 +1949,30 @@ def main():
     
     run_vulnerability_tests = args.audit
     
-    # Create scanner
+    # Utwórz skaner
     scanner = MedicalDeviceScanner(protocols=protocols)
     
-    # Scan devices (ble_duration from --ble-duration)
-    devices = scanner.scan_all(ble_duration=getattr(args, 'ble_duration', 20))
+    # Skanuj urządzenia (ble_duration z flagi --ble-duration)
+    devices = scanner.scan_all(ble_duration=getattr(args, 'ble_duration', 25))
     
-    # Check if any devices were found
+    # Sprawdź czy znaleziono urządzenia
     if not devices:
-        console.print("[yellow]⚠️  No devices found[/yellow]")
-        console.print("[dim]💡 Tip: WiFi scans the whole local network (all devices on WiFi)[/dim]")
-        console.print("[dim]   Use --no-wifi to scan only directly connected devices (USB, BLE)[/dim]\n")
+        console.print("[yellow]⚠️  Nie znaleziono żadnych urządzeń[/yellow]")
+        console.print("[dim]💡 Wskazówka: WiFi skanuje całą sieć lokalną (wszystkie urządzenia w sieci WiFi)[/dim]")
+        console.print("[dim]   Użyj --no-wifi aby skanować tylko urządzenia bezpośrednio podłączone (USB, BLE)[/dim]\n")
     else:
-        # Analyze security
+        # Analizuj bezpieczeństwo
         scanner.analyze_security(run_vulnerability_tests=run_vulnerability_tests)
         
-        # Display results
+        # Wyświetl wyniki
         scanner.display_results()
         
-        # Show high-risk devices (simplified, readable)
+        # Pokaż urządzenia wysokiego ryzyka (uproszczone, czytelne)
         risk_groups = scanner.get_devices_by_risk()
         if risk_groups["high_risk"]:
-            console.print("\n[bold red]⚠️  HIGH-RISK DEVICES:[/bold red]\n")
+            console.print("\n[bold red]⚠️  URZĄDZENIA WYSOKIEGO RYZYKA:[/bold red]\n")
             
-            # Group by protocol
+            # Grupuj według protokołu
             by_protocol = {}
             for device in risk_groups["high_risk"]:
                 protocol = device.protocol.value
@@ -1720,19 +1980,19 @@ def main():
                     by_protocol[protocol] = []
                 by_protocol[protocol].append(device)
             
-            # Show by protocol
+            # Wyświetl według protokołu
             protocol_names = {
                 "BLE": "📶 Bluetooth Low Energy (BLE)",
-                "WiFi": "📡 WiFi (Local network)",
-                "USB": "🔌 USB (Directly connected)",
-                "NFC": "📱 NFC (Cards/Tags)"
+                "WiFi": "📡 WiFi (Sieć lokalna)",
+                "USB": "🔌 USB (Podłączone bezpośrednio)",
+                "NFC": "📱 NFC (Karty/Tagi)"
             }
             
             for protocol, devices in by_protocol.items():
                 protocol_label = protocol_names.get(protocol, f"🌐 {protocol}")
-                console.print(f"[bold cyan]{protocol_label}[/bold cyan] ({len(devices)} devices):")
+                console.print(f"[bold cyan]{protocol_label}[/bold cyan] ({len(devices)} urządzeń):")
                 
-                # Group duplicates (same names)
+                # Grupuj duplikaty (te same nazwy)
                 name_groups = {}
                 for device in devices:
                     name = device.name if device.name != "Unknown" else f"Unknown-{device.mac_address[-5:]}"
@@ -1741,100 +2001,100 @@ def main():
                     name_groups[name].append(device)
                 
                 for name, device_list in name_groups.items():
-                    # If only one device with this name
+                    # Jeśli tylko jedno urządzenie z tą nazwą
                     if len(device_list) == 1:
                         device = device_list[0]
                         console.print(f"  • [yellow]{name}[/yellow]")
                         console.print(f"    MAC: {device.mac_address} | Score: {device.security_score}/100")
                         if device.vulnerabilities:
-                            # Show unique vulnerabilities
+                            # Pokaż unikalne podatności
                             unique_vulns = list(set(device.vulnerabilities))
-                            console.print(f"    ⚠️  Vulnerabilities ({len(unique_vulns)}):")
+                            console.print(f"    ⚠️  Podatności ({len(unique_vulns)}):")
                             for vuln in unique_vulns[:3]:
                                 console.print(f"      - {vuln}")
                             if len(unique_vulns) > 3:
-                                console.print(f"      ... and {len(unique_vulns) - 3} more")
+                                console.print(f"      ... i {len(unique_vulns) - 3} więcej")
                     else:
-                        # Multiple devices with same name – show together
-                        console.print(f"  • [yellow]{name}[/yellow] ({len(device_list)} devices)")
+                        # Wiele urządzeń z tą samą nazwą - pokaż razem
+                        console.print(f"  • [yellow]{name}[/yellow] ({len(device_list)} urządzeń)")
                         unique_vulns = set()
                         for device in device_list:
                             unique_vulns.update(device.vulnerabilities)
                         if unique_vulns:
-                            console.print(f"    ⚠️  Vulnerabilities ({len(unique_vulns)}):")
+                            console.print(f"    ⚠️  Podatności ({len(unique_vulns)}):")
                             for vuln in list(unique_vulns)[:3]:
                                 console.print(f"      - {vuln}")
                             if len(unique_vulns) > 3:
-                                console.print(f"      ... and {len(unique_vulns) - 3} more")
+                                console.print(f"      ... i {len(unique_vulns) - 3} więcej")
                         console.print(f"    [dim]MAC adresy: {', '.join([d.mac_address for d in device_list[:3]])}[/dim]")
                         if len(device_list) > 3:
-                            console.print(f"    [dim]... and {len(device_list) - 3} more[/dim]")
+                            console.print(f"    [dim]... i {len(device_list) - 3} więcej[/dim]")
                 
-                console.print()  # Blank line between protocols
+                console.print()  # Pusta linia między protokołami
         
-        # Save results
-        # By default only combined_report_*.json (all data in one file)
-        # Legacy files (scan_*.json, report_*.json) only if --legacy-reports
+        # Zapisz wyniki
+        # Domyślnie tworzymy tylko combined_report_*.json (wszystkie dane w jednym pliku)
+        # Stare pliki (scan_*.json, report_*.json) są tworzone tylko jeśli --legacy-reports
         if args.legacy_reports:
             scan_file = scanner.save_scan_results()
             report_files = scanner.generate_report()
-            console.print("[dim]   Also created legacy files (scan_*.json, report_*.json) for backward compatibility[/dim]")
+            console.print("[dim]   Utworzono również stare pliki (scan_*.json, report_*.json) dla kompatybilności wstecznej[/dim]")
         else:
             scan_file = ""
             report_files = {}
-            console.print("[dim]   Creating only combined_report_*.json (all data in one file)[/dim]")
+            console.print("[dim]   Tworzę tylko combined_report_*.json (wszystkie dane w jednym pliku)[/dim]")
         
-        # Save to history (if available)
+        # Zapisz do historii (jeśli dostępne)
         try:
             from history_db import HistoryDB
             history_db = HistoryDB()
             scan_id = history_db.save_scan(devices, protocols)
-            console.print(f"[dim]💾 Saved to history (scan_id: {scan_id})[/dim]")
+            console.print(f"[dim]💾 Zapisano do historii (scan_id: {scan_id})[/dim]")
         except Exception as e:
-            console.print(f"[dim]⚠️  Could not save to history: {e}[/dim]")
+            console.print(f"[dim]⚠️  Nie można zapisać do historii: {e}[/dim]")
             history_db = None
         
-        # Automatic SIEM export (enabled by default, JSON Lines format)
+        # Automatyczny eksport do SIEM (domyślnie włączony, format JSON Lines - uniwersalny)
         if not args.no_siem:
             try:
                 timestamp_str = datetime.now().isoformat()
                 file_timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
                 siem_file = f"siem_export_{file_timestamp}.jsonl"
                 
-                console.print("[cyan]📤 Exporting to SIEM (JSON Lines)...[/cyan]")
+                console.print("[cyan]📤 Eksportuję do SIEM (JSON Lines)...[/cyan]")
                 export_file = _export_to_siem_jsonl(scanner.devices, siem_file, timestamp_str)
-                console.print(f"[green]✅ Saved: {export_file}[/green]")
-                # Update path for import_to_splunk.sh
-                console.print(f"[dim]💡 Import to Splunk: ./scripts/import_to_splunk.sh[/dim]")
-                console.print(f"[dim]   💡 Simpler: use --api to view results in browser[/dim]")
-                console.print(f"[dim]   💡 Or import to Splunk/ELK – see docs[/dim]")
+                console.print(f"[green]✅ Zapisano: {export_file}[/green]")
+                # Aktualizuj ścieżkę dla import_to_splunk.sh
+                console.print(f"[dim]💡 Import do Splunk: ./scripts/import_to_splunk.sh[/dim]")
+                console.print(f"[dim]   💡 Prostsze: użyj --api aby zobaczyć wyniki w przeglądarce[/dim]")
+                console.print(f"[dim]   💡 Lub zaimportuj do Splunk/ELK Stack - zobacz REKOMENDACJE_SIEM.md[/dim]")
             except Exception:
-                pass  # Silently skip on error
+                pass  # Cicho pomiń jeśli błąd
         
-        # Save to history (if available)
+        # Zapisz do historii (jeśli dostępne)
         try:
             from history_db import HistoryDB
             history_db = HistoryDB()
             scan_id = history_db.save_scan(devices, protocols)
-            console.print(f"[dim]💾 Saved to history (scan_id: {scan_id})[/dim]")
+            console.print(f"[dim]💾 Zapisano do historii (scan_id: {scan_id})[/dim]")
         except Exception as e:
-            console.print(f"[dim]⚠️  Could not save to history: {e}[/dim]")
+            console.print(f"[dim]⚠️  Nie można zapisać do historii: {e}[/dim]")
             history_db = None
         
-        # Scan function for scheduler/monitor
+        # Funkcja do wykonania skanowania (dla scheduler/monitor)
         def perform_scan():
-            """Run full scan – used by scheduler/monitor."""
-            # Create new scanner
+            """Wykonuje pełne skanowanie - używane przez scheduler/monitor"""
+            # Utwórz nowy skaner
             scan_scanner = MedicalDeviceScanner(protocols=protocols)
             
-            # Scan (ble_duration from --ble-duration flag)
-            scan_devices = scan_scanner.scan_all(ble_duration=getattr(args, 'ble_duration', 20))
+            # Skanuj (ble_duration z flagi --ble-duration)
+            scan_devices = scan_scanner.scan_all(ble_duration=getattr(args, 'ble_duration', 25))
             
             if scan_devices:
-                # Analyze
+                # Analizuj
                 scan_scanner.analyze_security(run_vulnerability_tests=run_vulnerability_tests)
                 
-                # Save to history
+                # Zapisz do historii
                 try:
                     from history_db import HistoryDB
                     scan_history_db = HistoryDB()
@@ -1845,7 +2105,7 @@ def main():
             
             return scan_devices
         
-        # Scheduled scans (--schedule)
+        # Zaplanowane skanowania (--schedule)
         if args.schedule:
             try:
                 from scheduler import ScanScheduler
@@ -1853,21 +2113,21 @@ def main():
                 scheduler.add_schedule(args.schedule, perform_scan)
                 scheduler.start()
                 
-                console.print("\n[green]✅ Scheduler started[/green]")
-                console.print("[dim]   Press Ctrl+C to stop[/dim]\n")
+                console.print("\n[green]✅ Scheduler uruchomiony[/green]")
+                console.print("[dim]   Naciśnij Ctrl+C aby zatrzymać[/dim]\n")
                 
-                # Wait indefinitely
+                # Czekaj w nieskończoność
                 try:
                     while True:
                         time.sleep(1)
                 except KeyboardInterrupt:
                     scheduler.stop()
-                    console.print("\n[yellow]⏹️  Scheduler stopped[/yellow]")
+                    console.print("\n[yellow]⏹️  Zatrzymano scheduler[/yellow]")
                     return
             except Exception as e:
-                console.print(f"[red]❌ Scheduler error: {e}[/red]")
+                console.print(f"[red]❌ Błąd schedulera: {e}[/red]")
         
-        # Real-time monitoring (--monitor)
+        # Monitoring w czasie rzeczywistym (--monitor)
         if args.monitor:
             try:
                 from monitor import RealTimeMonitor
@@ -1886,28 +2146,28 @@ def main():
                 
                 monitor.start(email_recipients=[])
                 
-                console.print("\n[green]✅ Monitor started[/green]")
-                console.print("[dim]   Press Ctrl+C to stop[/dim]\n")
+                console.print("\n[green]✅ Monitor uruchomiony[/green]")
+                console.print("[dim]   Naciśnij Ctrl+C aby zatrzymać[/dim]\n")
                 
-                # Wait indefinitely
+                # Czekaj w nieskończoność
                 try:
                     while True:
                         time.sleep(1)
                 except KeyboardInterrupt:
                     monitor.stop()
-                    console.print("\n[yellow]⏹️  Monitor stopped[/yellow]")
+                    console.print("\n[yellow]⏹️  Zatrzymano monitor[/yellow]")
                     return
             except Exception as e:
-                console.print(f"[red]❌ Monitor error: {e}[/red]")
+                console.print(f"[red]❌ Błąd monitora: {e}[/red]")
         
-        # Automatic Threat Intelligence check (if API key available)
+        # Automatyczne sprawdzanie Threat Intelligence (jeśli klucz API dostępny)
         threat_intel_results = {}
         if not args.no_threat_intel:
             try:
                 import threading
                 import queue
                 
-                # Use queue to pass results from thread
+                # Użyj queue do przekazania wyników z wątku
                 threat_queue = queue.Queue()
                 
                 def check_threats():
@@ -1918,42 +2178,42 @@ def main():
                         if results:
                             threats_found = sum(1 for r in results.values() if r.get('is_threat', False))
                             if threats_found > 0:
-                                console.print(f"[yellow]⚠️  Threat Intelligence: Found {threats_found} suspicious IP(s)![/yellow]")
+                                console.print(f"[yellow]⚠️  Threat Intelligence: Znaleziono {threats_found} podejrzanych IP![/yellow]")
                     except Exception:
-                        threat_queue.put({})  # Empty on error
+                        threat_queue.put({})  # Pusta wartość jeśli błąd
                 
-                # Run in background (non-blocking)
+                # Uruchom w tle (nie blokuje)
                 threat_thread = threading.Thread(target=check_threats, daemon=True)
                 threat_thread.start()
-                console.print("[cyan]🔍 Checking threat intelligence (background)...[/cyan]")
-                # Show message only if key is not available
+                console.print("[cyan]🔍 Sprawdzam threat intelligence (w tle)...[/cyan]")
+                # Wyświetl komunikat tylko jeśli klucz nie jest dostępny
                 abuseipdb_key = os.getenv("ABUSEIPDB_API_KEY")
                 if not abuseipdb_key:
-                    console.print(f"[dim]   💡 Add ABUSEIPDB_API_KEY to .env for full functionality[/dim]")
+                    console.print(f"[dim]   💡 Dodaj ABUSEIPDB_API_KEY do .env dla pełnej funkcjonalności[/dim]")
                 
-                # Wait for threat intelligence to finish (max 30 s)
+                # Poczekaj chwilę na zakończenie threat intelligence (max 30 sekund)
                 threat_thread.join(timeout=30)
                 
-                # Get results from queue (if available)
+                # Pobierz wyniki z queue (jeśli są dostępne)
                 try:
                     threat_intel_results = threat_queue.get(timeout=1)
                 except queue.Empty:
-                    threat_intel_results = {}  # No results
+                    threat_intel_results = {}  # Brak wyników
             except Exception:
-                pass  # Silently skip on error
+                pass  # Cicho pomiń jeśli błąd
         
-        # Generate combined report with all data
+        # Generuj kompleksowy raport łączący wszystkie dane
         combined_report = scanner.generate_combined_report(threat_intel_data=threat_intel_results if threat_intel_results else None)
 
         if args.report_email and combined_report and os.path.isfile(combined_report):
             _send_report_email(args.report_email, combined_report)
 
-        console.print("[bold green]✅ Scan complete![/bold green]\n")
+        console.print("[bold green]✅ Skanowanie zakończone![/bold green]\n")
         
-        # Start API server if requested
+        # Uruchom API server jeśli żądane
         if args.api:
-            console.print(f"[cyan]🌐 Starting API server on port {args.api_port}...[/cyan]")
-            console.print(f"[dim]Open in browser: http://localhost:{args.api_port}[/dim]\n")
+            console.print(f"[cyan]🌐 Uruchamiam API server na porcie {args.api_port}...[/cyan]")
+            console.print(f"[dim]Otwórz w przeglądarce: http://localhost:{args.api_port}[/dim]\n")
             
             try:
                 from api_server import app, shutdown_event, last_request_time
@@ -1961,87 +2221,87 @@ def main():
                 import webbrowser
                 import time
                 
-                # Run server in separate thread
+                # Uruchom serwer w osobnym wątku
                 def run_server():
                     app.run(host='0.0.0.0', port=args.api_port, debug=False, use_reloader=False, threaded=True)
                 
                 server_thread = threading.Thread(target=run_server, daemon=True)
                 server_thread.start()
                 
-                # Wait a moment for server to start
+                # Poczekaj chwilę na uruchomienie
                 time.sleep(2)
                 
-                # Open browser
+                # Otwórz przeglądarkę
                 try:
                     webbrowser.open(f'http://localhost:{args.api_port}')
                 except:
                     pass
                 
-                console.print("[green]✅ API Server started![/green]")
+                console.print("[green]✅ API Server uruchomiony![/green]")
                 console.print(f"[cyan]   Endpointy:[/cyan]")
                 console.print(f"   • http://localhost:{args.api_port}/")
                 console.print(f"   • http://localhost:{args.api_port}/dashboard")
                 console.print(f"   • http://localhost:{args.api_port}/devices")
                 console.print(f"   • http://localhost:{args.api_port}/stats")
-                console.print(f"\n[dim]💡 Close the browser to end the scan automatically[/dim]")
-                console.print(f"[yellow]   Press Ctrl+C to stop manually[/yellow]\n")
+                console.print(f"\n[dim]💡 Zamknij przeglądarkę aby automatycznie zakończyć skanowanie[/dim]")
+                console.print(f"[yellow]   Naciśnij Ctrl+C aby zatrzymać ręcznie[/yellow]\n")
                 
-                # Wait for browser close (shutdown) or Ctrl+C
-                # Check if browser still sends heartbeat
+                # Czekaj na zamknięcie przeglądarki (shutdown) lub Ctrl+C
+                # Sprawdzaj czy przeglądarka nadal wysyła heartbeat
                 try:
                     import time as time_module
                     
-                    heartbeat_timeout = 3  # Shorter timeout – if no heartbeat for 3 s, close
+                    heartbeat_timeout = 3  # Skrócony timeout - jeśli brak heartbeat przez 3 sekundy, zamknij
                     first_request = True
                     last_heartbeat_time = time_module.time()
                     
                     while not shutdown_event.is_set():
                         time.sleep(0.5)
                         
-                        # Check if browser still sends heartbeat
+                        # Sprawdź czy przeglądarka nadal wysyła heartbeat
                         current_time = time_module.time()
                         time_since_heartbeat = current_time - last_request_time
                         
-                        # If there was any request (heartbeat or normal), update time
+                        # Jeśli był jakiś request (heartbeat lub normalny), zaktualizuj czas
                         if time_since_heartbeat < 1.5:
                             if first_request:
                                 first_request = False
                             last_heartbeat_time = current_time
                         
-                        # If no heartbeat for timeout (and there was a request before), close
+                        # Jeśli brak heartbeat przez timeout (i był wcześniej request), zamknij
                         if not first_request:
                             time_since_last_heartbeat = current_time - last_heartbeat_time
                             if time_since_last_heartbeat > heartbeat_timeout:
-                                console.print("\n[dim]🔌 Browser closed (no heartbeat) – shutting down server...[/dim]")
+                                console.print("\n[dim]🔌 Wykryto zamknięcie przeglądarki (brak heartbeat) - zamykam serwer...[/dim]")
                                 shutdown_event.set()
                                 break
                     
-                    console.print("\n[dim]🔌 Closing server...[/dim]")
-                    time.sleep(0.5)  # Give time to shut down
-                    console.print("[green]✅ Scan complete[/green]")
+                    console.print("\n[dim]🔌 Zamykam serwer...[/dim]")
+                    time.sleep(0.5)  # Daj czas na zamknięcie
+                    console.print("[green]✅ Skanowanie zakończone[/green]")
                 except KeyboardInterrupt:
-                    console.print("\n[yellow]⚠️  Stopping...[/yellow]")
+                    console.print("\n[yellow]⚠️  Zatrzymywanie...[/yellow]")
                     shutdown_event.set()
                 except Exception as e:
-                    console.print(f"\n[yellow]⚠️  Error: {e}[/yellow]")
+                    console.print(f"\n[yellow]⚠️  Błąd: {e}[/yellow]")
                     shutdown_event.set()
                 finally:
-                    shutdown_event.set()  # Ensure event is set
-                    # Force process exit
+                    shutdown_event.set()  # Upewnij się że event jest ustawiony
+                    # Wymuś zamknięcie procesu
                     os._exit(0)
                     
             except ImportError:
-                console.print("[red]❌ Cannot start API server – Flask not installed[/red]")
-                console.print("[yellow]   Install: pip install flask[/yellow]")
+                console.print("[red]❌ Nie można uruchomić API server - Flask nie jest zainstalowany[/red]")
+                console.print("[yellow]   Zainstaluj: pip install flask[/yellow]")
             except Exception as e:
-                console.print(f"[red]❌ API startup error: {e}[/red]")
+                console.print(f"[red]❌ Błąd uruchamiania API: {e}[/red]")
         
-        # Full audit info
+        # Informacja o pełnym audycie
         if not run_vulnerability_tests:
             console.print("\n[dim]ℹ️  Tip: Use --audit flag for detailed vulnerability testing[/dim]")
             console.print("[dim]   Example: python3 src/scanner.py --wifi --audit[/dim]")
         
-        # Show security audit results if tests were run
+        # Pokaż wyniki audytu bezpieczeństwa jeśli wykonano testy
         if run_vulnerability_tests and scanner.vulnerability_tester:
             console.print("\n[bold cyan]🔍 DETAILED VULNERABILITY AUDIT RESULTS:[/bold cyan]\n")
             console.print("[dim]ℹ️  Full security audit was performed with --audit flag[/dim]\n")
@@ -2050,7 +2310,7 @@ def main():
             for device in scanner.devices:
                 if "vulnerability_tests" in device.metadata:
                     tests = device.metadata["vulnerability_tests"]
-                    # Filter only real vulnerabilities
+                    # Filtruj tylko rzeczywiste podatności
                     vulnerable_tests = [t for t in tests if t.get("is_vulnerable", False)]
                     
                     if not vulnerable_tests:
@@ -2058,7 +2318,7 @@ def main():
                     
                     total_vulnerable_devices += 1
                     
-                    # Split into medical ports and rest
+                    # Podziel na porty medyczne i resztę
                     medical_ports = [104, 11112, 5000]
                     medical_tests = [t for t in vulnerable_tests if t.get("port") in medical_ports or t.get("protocol") in ["DICOM", "HL7"]]
                     other_tests = [t for t in vulnerable_tests if t not in medical_tests]
@@ -2068,59 +2328,59 @@ def main():
                     critical_other = [t for t in other_tests if t["severity"] == "Krytyczna"]
                     high_other = [t for t in other_tests if t["severity"] == "Wysoka"]
                     
-                    # Check if it is a router
+                    # Sprawdź czy to router
                     is_router = False
                     if scanner.vulnerability_tester:
                         is_router = scanner.vulnerability_tester._is_router(device)
                     
                     console.print(f"[bold yellow]📋 {device.name}[/bold yellow] (Score: {device.security_score}/100)")
                     if is_router:
-                        console.print(f"  [dim]🏠 Router/Gateway – some ports (80, 443, 22, 161) are normal[/dim]")
+                        console.print(f"  [dim]🏠 Router/Gateway - niektóre porty (80, 443, 22, 161) są normalne[/dim]")
                     console.print(f"  IP: {device.metadata.get('ip_address', 'N/A')}")
                     
-                    # Medical ports
+                    # Porty medyczne
                     if critical_medical or high_medical:
-                        console.print(f"\n  [cyan]🏥 MEDICAL PORTS:[/cyan]")
+                        console.print(f"\n  [cyan]🏥 PORTY MEDYCZNE:[/cyan]")
                         if critical_medical:
-                            console.print(f"    [red]🔴 Critical ({len(critical_medical)}):[/red]")
+                            console.print(f"    [red]🔴 Krytyczne ({len(critical_medical)}):[/red]")
                             for test in critical_medical:
                                 console.print(f"      • Port {test.get('port', 'N/A')}: {test['name']}")
                         if high_medical:
-                            console.print(f"    [yellow]🟠 High ({len(high_medical)}):[/yellow]")
+                            console.print(f"    [yellow]🟠 Wysokie ({len(high_medical)}):[/yellow]")
                             for test in high_medical:
                                 console.print(f"      • Port {test.get('port', 'N/A')}: {test['name']}")
                     else:
-                        console.print(f"  [green]✅ Medical ports: No vulnerabilities[/green]")
+                        console.print(f"  [green]✅ Porty medyczne: Brak podatności[/green]")
                     
-                    # Other ports
+                    # Inne porty
                     if critical_other or high_other:
-                        console.print(f"\n  [blue]🔌 OTHER PORTS:[/blue]")
+                        console.print(f"\n  [blue]🔌 INNE PORTY:[/blue]")
                         if critical_other:
-                            console.print(f"    [red]🔴 Critical ({len(critical_other)}):[/red]")
+                            console.print(f"    [red]🔴 Krytyczne ({len(critical_other)}):[/red]")
                             for test in critical_other:
                                 console.print(f"      • Port {test.get('port', 'N/A')}: {test['name']}")
                         if high_other:
-                            console.print(f"    [yellow]🟠 High ({len(high_other)}):[/yellow]")
+                            console.print(f"    [yellow]🟠 Wysokie ({len(high_other)}):[/yellow]")
                             for test in high_other:
                                 console.print(f"      • Port {test.get('port', 'N/A')}: {test['name']}")
                     else:
-                        console.print(f"  [green]✅ Other ports: No vulnerabilities[/green]")
+                        console.print(f"  [green]✅ Inne porty: Brak podatności[/green]")
                     
-                    # Attack susceptibility (from known vulnerabilities)
+                    # Podatność na ataki (na podstawie znanych podatności)
                     attack_sus = device.metadata.get("attack_susceptibility", [])
                     if attack_sus:
-                        console.print(f"\n  [yellow]🎯 ATTACK SUSCEPTIBILITY:[/yellow]")
+                        console.print(f"\n  [yellow]🎯 PODATNOŚĆ NA ATAKI:[/yellow]")
                         for a in attack_sus[:8]:
                             console.print(f"    • {a.get('attack_type', 'N/A')}: [dim]{a.get('reason', '')}[/dim]")
                         if len(attack_sus) > 8:
-                            console.print(f"    [dim]... and {len(attack_sus) - 8} more[/dim]")
+                            console.print(f"    [dim]... i {len(attack_sus) - 8} więcej[/dim]")
                     
-                    console.print()  # Blank line between devices
+                    console.print()  # Pusta linia między urządzeniami
             
             if total_vulnerable_devices == 0:
-                console.print("[green]✅ No vulnerabilities in any device![/green]\n")
+                console.print("[green]✅ Brak podatności we wszystkich urządzeniach![/green]\n")
     
-    # Show security audit results if tests were run
+    # Pokaż wyniki audytu bezpieczeństwa jeśli wykonano testy
     if devices and run_vulnerability_tests and scanner.vulnerability_tester:
         console.print("\n[bold cyan]🔍 DETAILED VULNERABILITY AUDIT RESULTS:[/bold cyan]\n")
         console.print("[dim]ℹ️  Full security audit was performed with --audit flag[/dim]\n")
@@ -2129,7 +2389,7 @@ def main():
         for device in scanner.devices:
             if "vulnerability_tests" in device.metadata:
                 tests = device.metadata["vulnerability_tests"]
-                # Filter only real vulnerabilities
+                # Filtruj tylko rzeczywiste podatności
                 vulnerable_tests = [t for t in tests if t.get("is_vulnerable", False)]
                 
                 if not vulnerable_tests:
@@ -2137,67 +2397,67 @@ def main():
                 
                 total_vulnerable_devices += 1
                 
-                # Split into medical ports and rest
+                # Podziel na porty medyczne i resztę
                 medical_ports = [104, 11112, 5000]
                 medical_tests = [t for t in vulnerable_tests if t.get("port") in medical_ports or t.get("protocol") in ["DICOM", "HL7"]]
                 other_tests = [t for t in vulnerable_tests if t not in medical_tests]
                 
-                critical_medical = [t for t in medical_tests if t["severity"] == "Critical"]
-                high_medical = [t for t in medical_tests if t["severity"] == "High"]
-                critical_other = [t for t in other_tests if t["severity"] == "Critical"]
-                high_other = [t for t in other_tests if t["severity"] == "High"]
+                critical_medical = [t for t in medical_tests if t["severity"] == "Krytyczna"]
+                high_medical = [t for t in medical_tests if t["severity"] == "Wysoka"]
+                critical_other = [t for t in other_tests if t["severity"] == "Krytyczna"]
+                high_other = [t for t in other_tests if t["severity"] == "Wysoka"]
                 
-                # Check if it is a router
+                # Sprawdź czy to router
                 is_router = False
                 if scanner.vulnerability_tester:
                     is_router = scanner.vulnerability_tester._is_router(device)
                 
                 console.print(f"[bold yellow]📋 {device.name}[/bold yellow] (Score: {device.security_score}/100)")
                 if is_router:
-                    console.print(f"  [dim]🏠 Router/Gateway – some ports (80, 443, 22, 161) are normal[/dim]")
+                    console.print(f"  [dim]🏠 Router/Gateway - niektóre porty (80, 443, 22, 161) są normalne[/dim]")
                 console.print(f"  IP: {device.metadata.get('ip_address', 'N/A')}")
                 
-                # Medical ports
+                # Porty medyczne
                 if critical_medical or high_medical:
-                    console.print(f"\n  [cyan]🏥 MEDICAL PORTS:[/cyan]")
+                    console.print(f"\n  [cyan]🏥 PORTY MEDYCZNE:[/cyan]")
                     if critical_medical:
-                        console.print(f"    [red]🔴 Critical ({len(critical_medical)}):[/red]")
+                        console.print(f"    [red]🔴 Krytyczne ({len(critical_medical)}):[/red]")
                         for test in critical_medical:
                             console.print(f"      • Port {test.get('port', 'N/A')}: {test['name']}")
                     if high_medical:
-                        console.print(f"    [yellow]🟠 High ({len(high_medical)}):[/yellow]")
+                        console.print(f"    [yellow]🟠 Wysokie ({len(high_medical)}):[/yellow]")
                         for test in high_medical:
                             console.print(f"      • Port {test.get('port', 'N/A')}: {test['name']}")
                 else:
-                    console.print(f"  [green]✅ Medical ports: No vulnerabilities[/green]")
+                    console.print(f"  [green]✅ Porty medyczne: Brak podatności[/green]")
                 
-                # Other ports
+                # Inne porty
                 if critical_other or high_other:
-                    console.print(f"\n  [blue]🔌 OTHER PORTS:[/blue]")
+                    console.print(f"\n  [blue]🔌 INNE PORTY:[/blue]")
                     if critical_other:
-                        console.print(f"    [red]🔴 Critical ({len(critical_other)}):[/red]")
+                        console.print(f"    [red]🔴 Krytyczne ({len(critical_other)}):[/red]")
                         for test in critical_other:
                             console.print(f"      • Port {test.get('port', 'N/A')}: {test['name']}")
                     if high_other:
-                        console.print(f"    [yellow]🟠 High ({len(high_other)}):[/yellow]")
+                        console.print(f"    [yellow]🟠 Wysokie ({len(high_other)}):[/yellow]")
                         for test in high_other:
                             console.print(f"      • Port {test.get('port', 'N/A')}: {test['name']}")
                 else:
-                    console.print(f"  [green]✅ Other ports: No vulnerabilities[/green]")
+                    console.print(f"  [green]✅ Inne porty: Brak podatności[/green]")
                 
-                # Attack susceptibility
+                # Podatność na ataki
                 attack_sus = device.metadata.get("attack_susceptibility", [])
                 if attack_sus:
-                    console.print(f"\n  [yellow]🎯 ATTACK SUSCEPTIBILITY:[/yellow]")
+                    console.print(f"\n  [yellow]🎯 PODATNOŚĆ NA ATAKI:[/yellow]")
                     for a in attack_sus[:8]:
                         console.print(f"    • {a.get('attack_type', 'N/A')}: [dim]{a.get('reason', '')}[/dim]")
                     if len(attack_sus) > 8:
-                        console.print(f"    [dim]... and {len(attack_sus) - 8} more[/dim]")
+                        console.print(f"    [dim]... i {len(attack_sus) - 8} więcej[/dim]")
                 
-                console.print()  # Blank line between devices
+                console.print()  # Pusta linia między urządzeniami
         
         if total_vulnerable_devices == 0:
-            console.print("[green]✅ No vulnerabilities in any device![/green]\n")
+            console.print("[green]✅ Brak podatności we wszystkich urządzeniach![/green]\n")
     
     
 
@@ -2206,10 +2466,10 @@ if __name__ == "__main__":
     try:
         main()
     except KeyboardInterrupt:
-        console.print("\n[yellow]⚠️  Interrupted by user[/yellow]")
+        console.print("\n[yellow]⚠️  Przerwano przez użytkownika[/yellow]")
         sys.exit(0)
     except Exception as e:
-        console.print(f"\n[red]❌ Error: {e}[/red]")
+        console.print(f"\n[red]❌ Błąd: {e}[/red]")
         import traceback
         traceback.print_exc()
         sys.exit(1)
