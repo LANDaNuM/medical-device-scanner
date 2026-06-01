@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Any
 from enum import Enum
 
 
@@ -49,9 +49,9 @@ class Device:
     last_seen: datetime = field(default_factory=datetime.now)
     
     vulnerabilities: List[str] = field(default_factory=list)
-    metadata: Dict = field(default_factory=dict)
+    metadata: Dict[str, Any] = field(default_factory=dict)
     
-    def update_last_seen(self):
+    def update_last_seen(self) -> None:
         """Update last seen timestamp."""
         self.last_seen = datetime.now()
     
@@ -70,19 +70,19 @@ class Device:
         self.security_score = max(0, min(100, score))
         return self.security_score
     
-    def add_vulnerability(self, vulnerability: str):
+    def add_vulnerability(self, vulnerability: str) -> None:
         """Add vulnerability to list."""
         if vulnerability not in self.vulnerabilities:
             self.vulnerabilities.append(vulnerability)
             # Recalculate security score
             self.calculate_security_score()
     
-    def to_dict(self) -> dict:
+    def to_dict(self) -> Dict[str, Any]:
         """Convert device to dict (for JSON/API)."""
         import numpy as np
         
         # Convert metadata to JSON-serializable types
-        metadata_serializable = {}
+        metadata_serializable: Dict[str, Any] = {}
         if self.metadata:
             for key, value in self.metadata.items():
                 if isinstance(value, (np.integer, np.floating)):
@@ -102,7 +102,7 @@ class Device:
             metadata_serializable = {}
         
         # Get IP from metadata for easier identification
-        device_ip = None
+        device_ip: Optional[str] = None
         if metadata_serializable:
             device_ip = metadata_serializable.get('ip_address') or metadata_serializable.get('ip')
         
@@ -110,7 +110,7 @@ class Device:
         identification_quality = self._get_identification_quality(display_name, metadata_serializable)
 
         # Keep report concise: remove noisy empty/null fields from top-level output
-        payload = {
+        payload: Dict[str, Any] = {
             "label": display_name,
             "mac_address": self.mac_address,
             "name": self.name,
@@ -138,7 +138,7 @@ class Device:
             if v is not None and v != "" and not (isinstance(v, (list, dict)) and len(v) == 0)
         }
 
-    def _get_identification_quality(self, display_name: str, metadata: dict) -> str:
+    def _get_identification_quality(self, display_name: str, metadata: Dict[str, Any]) -> str:
         """
         Estimate how confidently the device is identified:
         - high: explicit non-generic name or manufacturer+model
@@ -177,7 +177,7 @@ class Device:
 
         return "low"
     
-    def _convert_value_for_json(self, value):
+    def _convert_value_for_json(self, value: Any) -> Any:
         """Convert single value to JSON-serializable type."""
         import numpy as np
         if isinstance(value, (np.integer, np.floating)):
@@ -193,16 +193,16 @@ class Device:
         else:
             return value
     
-    def _convert_dict_for_json(self, d: dict) -> dict:
+    def _convert_dict_for_json(self, d: Dict[str, Any]) -> Dict[str, Any]:
         """Convert dict to JSON-serializable types."""
-        result = {}
+        result: Dict[str, Any] = {}
         for key, value in d.items():
             result[key] = self._convert_value_for_json(value)
         return result
     
     def get_device_fingerprint(self) -> str:
         """Generate unique device fingerprint (protocol, type, manufacturer, model, MAC suffix, IP)."""
-        parts = [
+        parts: List[str] = [
             self.protocol.value,
             self.device_type.value,
         ]
