@@ -70,7 +70,11 @@ See `requirements.txt`. For flags and options, run `python src/scanner.py --help
 - `scripts/` – ESP32 reader, setup and test scripts
 - `exports/` – generated reports (gitignored)
 ## Testy
-pytest tests/ -v
+
+```bash
+python3 -m pip install -r requirements-test.txt
+python3 -m pytest tests/ -v
+```
 
 ## License
 
