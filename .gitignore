@@ -45,6 +45,12 @@ wyniki_esp32.json
 # Logs
 *.log
 
+# Tests / coverage
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+
 # OS
 .DS_Store
 Thumbs.db

@@ -2071,16 +2071,6 @@ def main():
             except Exception:
                 pass  # Cicho pomiń jeśli błąd
         
-        # Zapisz do historii (jeśli dostępne)
-        try:
-            from history_db import HistoryDB
-            history_db = HistoryDB()
-            scan_id = history_db.save_scan(devices, protocols)
-            console.print(f"[dim]💾 Zapisano do historii (scan_id: {scan_id})[/dim]")
-        except Exception as e:
-            console.print(f"[dim]⚠️  Nie można zapisać do historii: {e}[/dim]")
-            history_db = None
-        
         # Funkcja do wykonania skanowania (dla scheduler/monitor)
         def perform_scan():
             """Wykonuje pełne skanowanie - używane przez scheduler/monitor"""
@@ -2130,12 +2120,12 @@ def main():
         # Monitoring w czasie rzeczywistym (--monitor)
         if args.monitor:
             try:
-                from monitor import RealTimeMonitor
+                from monitor import DeviceMonitor
                 from history_db import HistoryDB
                 
                 monitor_history_db = HistoryDB()
                 
-                monitor = RealTimeMonitor(
+                monitor = DeviceMonitor(
                     scan_function=perform_scan,
                     interval=args.interval,
                     alert_on_new=True,
