@@ -20,8 +20,13 @@ jobs:
 
     - name: Zainstaluj zależności
       run: |
-        pip install pytest
-        pip install python-dotenv requests rich numpy
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pytest pytest-cov
 
     - name: Uruchom testy
-      run: pytest tests/ -v
+      run: pytest tests/ -v --tb=short
+
+    - name: Generuj raport pokrycia
+      run: pytest tests/ --cov=src --cov-report=xml --cov-report=term
+      continue-on-error: true
