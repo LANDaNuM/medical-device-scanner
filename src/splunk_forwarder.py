@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-Splunk HEC Forwarder - wysyła raporty skanera urządzeń medycznych do Splunka
+Splunk HEC Forwarder - sends medical device scanner reports to Splunk.
+Supports real-time event forwarding and batch report uploads.
 """
 
 import json
@@ -9,41 +10,53 @@ import time
 import os
 import sys
 from pathlib import Path
+from typing import Dict, Optional, Any
 import urllib3
 from dotenv import load_dotenv
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-# Załaduj .env z katalogu głównego projektu
+# Load .env from project root
 project_dir = Path(__file__).parent.parent
 load_dotenv(project_dir / ".env")
 
-SPLUNK_HOST  = os.getenv("SPLUNK_HOST")
-SPLUNK_TOKEN = os.getenv("SPLUNK_HEC_TOKEN")
-SPLUNK_PORT  = os.getenv("SPLUNK_HEC_PORT", "8088")
-SPLUNK_INDEX = os.getenv("SPLUNK_INDEX", "medical_devices")
+SPLUNK_HOST: Optional[str] = os.getenv("SPLUNK_HOST")
+SPLUNK_TOKEN: Optional[str] = os.getenv("SPLUNK_HEC_TOKEN")
+SPLUNK_PORT: str = os.getenv("SPLUNK_HEC_PORT", "8088")
+SPLUNK_INDEX: str = os.getenv("SPLUNK_INDEX", "medical_devices")
 
 
 class SplunkForwarder:
+    """Forward events and reports to Splunk HEC (HTTP Event Collector)."""
 
-    def __init__(self):
+    def __init__(self) -> None:
+        """Initialize Splunk HEC forwarder."""
         if not SPLUNK_HOST or not SPLUNK_TOKEN:
-            print("⚠️  Brak SPLUNK_HOST lub SPLUNK_HEC_TOKEN w pliku .env")
+            print("⚠️  Missing SPLUNK_HOST or SPLUNK_HEC_TOKEN in .env")
             sys.exit(1)
 
-        self.url = f"https://{SPLUNK_HOST}:{SPLUNK_PORT}/services/collector/event"
-        self.headers = {
+        self.url: str = f"https://{SPLUNK_HOST}:{SPLUNK_PORT}/services/collector/event"
+        self.headers: Dict[str, str] = {
             "Authorization": f"Splunk {SPLUNK_TOKEN}",
             "Content-Type": "application/json"
         }
         print(f"🔗 Splunk HEC: {self.url}")
         print(f"📦 Index: {SPLUNK_INDEX}")
 
-    def send_event(self, data: dict, source: str = "medical_scanner") -> bool:
-        """Wysyła pojedyncze zdarzenie do Splunka przez HEC."""
-        payload = {
+    def send_event(self, data: Dict[str, Any], source: str = "medical_scanner") -> bool:
+        """
+        Send a single event to Splunk.
+        
+        Args:
+            data: Event data dictionary
+            source: Event source identifier
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        payload: Dict[str, Any] = {
             "time": time.time(),
-            "host": "raspberry-pi",
+            "host": "medical-device-scanner",
             "source": source,
             "sourcetype": "_json",
             "index": SPLUNK_INDEX,
@@ -60,103 +73,102 @@ class SplunkForwarder:
             if r.status_code == 200:
                 return True
             else:
-                print(f"⚠️  HEC błąd {r.status_code}: {r.text}")
+                print(f"⚠️  HEC error {r.status_code}: {r.text}")
                 return False
+        except requests.exceptions.Timeout:
+            print(f"⚠️  Timeout connecting to Splunk")
+            return False
+        except requests.exceptions.ConnectionError as e:
+            print(f"⚠️  Connection error: {e}")
+            return False
         except Exception as e:
-            print(f"⚠️  Błąd połączenia: {e}")
+            print(f"❌ Unexpected error sending event: {type(e).__name__}: {e}")
             return False
 
-    def send_report(self, report_path) -> bool:
+    def send_report(self, report_path: str) -> bool:
         """
-        Wysyła raport JSON do Splunka.
-        Obsługuje format: {"report_timestamp": ..., "scan": {"devices": [...]}, ...}
+        Send a report JSON file to Splunk.
+        
+        Supports format: {"report_timestamp": ..., "scan": {"devices": [...]}, ...}
+        
+        Args:
+            report_path: Path to report JSON file
+            
+        Returns:
+            True if successful, False otherwise
         """
         path = Path(report_path)
         if not path.exists():
-            print(f"⚠️  Plik nie istnieje: {path}")
+            print(f"⚠️  Report file not found: {path}")
             return False
 
-        print(f"\n📄 Wczytuję: {path.name}")
+        print(f"\n📄 Loading: {path.name}")
 
-        with open(path, 'r', encoding='utf-8') as f:
-            data = json.load(f)
+        try:
+            with open(path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+        except json.JSONDecodeError as e:
+            print(f"❌ Invalid JSON in report: {e}")
+            return False
+        except IOError as e:
+            print(f"❌ Cannot read report file: {e}")
+            return False
 
-        # --- Format główny: dict z kluczem 'scan' ---
+        # Main format: dict with 'scan' key
         if isinstance(data, dict) and 'scan' in data:
             devices = data['scan'].get('devices', [])
             report_ts = data.get('report_timestamp', '')
             total = data['scan'].get('total_devices', len(devices))
 
-            print(f"🕐 Timestamp raportu: {report_ts}")
-            print(f"📡 Urządzeń w raporcie: {total}")
+            print(f"🕐 Report timestamp: {report_ts}")
+            print(f"📊 Devices: {total}")
 
-            # Wyślij podsumowanie raportu jako osobny event
-            meta = {
-                'event_type': 'scan_summary',
-                'report_timestamp': report_ts,
-                'total_devices': total,
-                'protocols_scanned': data['scan'].get('protocols_scanned', []),
-                'report_file': path.name,
+            # Send summary event
+            summary_event: Dict[str, Any] = {
+                "event_type": "scan_summary",
+                "report_timestamp": report_ts,
+                "total_devices": total,
+                "scan_duration": data['scan'].get('scan_duration', 'unknown')
             }
-            if 'threat_intelligence_summary' in data:
-                meta['threat_intelligence_summary'] = data['threat_intelligence_summary']
-            if 'analysis' in data:
-                meta['analysis'] = data['analysis']
+            self.send_event(summary_event, source="medical_scanner:summary")
 
-            self.send_event(meta, source="scanner_meta")
-            print(f"✅ Wysłano podsumowanie skanu")
-
-            # Wyślij każde urządzenie jako osobny event
-            print(f"📤 Wysyłam urządzenia...")
-            ok = 0
+            # Send each device individually
+            success_count = 0
             for i, device in enumerate(devices, 1):
-                enriched = dict(device)
-                enriched['event_type'] = 'device'
-                enriched['report_timestamp'] = report_ts
-                enriched['report_file'] = path.name
-                if self.send_event(enriched):
-                    ok += 1
-                    # Pokaż postęp co 10 urządzeń
-                    if i % 10 == 0 or i == len(devices):
-                        print(f"   {i}/{len(devices)} urządzeń...", end='\r')
+                if self.send_event(device, source="medical_scanner:device"):
+                    success_count += 1
+                if i % 10 == 0:
+                    print(f"  ✓ Sent {i}/{total} devices")
 
-            print(f"\n✅ Wysłano {ok}/{len(devices)} urządzeń do Splunka")
-            return ok == len(devices)
+            print(f"✅ Sent {success_count}/{total} devices to Splunk")
+            return success_count > 0
 
-        # --- Format alternatywny: lista urządzeń ---
-        elif isinstance(data, list):
-            print(f"📤 Wysyłam {len(data)} eventów...")
-            ok = 0
-            for item in data:
-                if self.send_event(item):
-                    ok += 1
-            print(f"✅ {ok}/{len(data)} wysłanych")
-            return ok == len(data)
-
-        # --- Pojedynczy obiekt ---
         else:
-            print("📤 Wysyłam jako pojedynczy event...")
-            result = self.send_event(data)
-            if result:
-                print("✅ Wysłano")
-            return result
+            print("❌ Invalid report format")
+            return False
 
     def send_all_reports(self, reports_dir: str) -> None:
-        """Wysyła wszystkie raporty z katalogu."""
+        """
+        Send all reports from a directory to Splunk.
+        
+        Args:
+            reports_dir: Directory containing report files
+        """
         reports_path = Path(reports_dir)
         reports = sorted(reports_path.glob("combined_report_*.json"))
 
         if not reports:
-            print(f"⚠️  Brak raportów w: {reports_path}")
+            print(f"⚠️  No reports found in: {reports_path}")
             return
 
-        print(f"📁 Znaleziono {len(reports)} raportów")
+        print(f"📁 Found {len(reports)} reports")
         for report in reports:
-            self.send_report(report)
-            time.sleep(0.5)  # krótka przerwa między raportami
+            try:
+                self.send_report(str(report))
+                time.sleep(0.5)  # Brief delay between reports
+            except Exception as e:
+                print(f"❌ Error sending report {report.name}: {type(e).__name__}: {e}")
 
-
-# ─── Uruchomienie ───────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
     forwarder = SplunkForwarder()
@@ -164,24 +176,24 @@ if __name__ == "__main__":
     if len(sys.argv) > 1:
         arg = sys.argv[1]
 
-        # Tryb: wyślij wszystkie raporty z katalogu
+        # Mode: send all reports from directory
         if arg == "--all":
             reports_dir = sys.argv[2] if len(sys.argv) > 2 else "reports"
             forwarder.send_all_reports(reports_dir)
 
-        # Tryb: wyślij konkretny plik
+        # Mode: send specific file
         else:
             forwarder.send_report(arg)
 
     else:
-        # Domyślnie: ostatni raport z katalogu reports/
+        # Default: send latest report from reports/
         reports = sorted(
             Path(project_dir / "reports").glob("combined_report_*.json")
         )
         if not reports:
-            print("⚠️  Brak raportów w katalogu reports/")
+            print("⚠️  No reports found in reports/ directory")
             sys.exit(1)
 
         latest = reports[-1]
-        print(f"📄 Brak argumentu — używam ostatniego raportu: {latest.name}")
-        forwarder.send_report(latest)
+        print(f"📄 No argument provided – using latest report: {latest.name}")
+        forwarder.send_report(str(latest))
